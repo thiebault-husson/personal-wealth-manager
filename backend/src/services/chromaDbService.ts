@@ -88,15 +88,23 @@ export class ChromaDbService {
     await this.ensureInitialized();
 
     try {
-      const results = await this.usersCollection.get({});
-
-      if (!results.documents || results.documents.length === 0) {
-        return [];
-      }
-
+      const total = await this.getUserCount();
+      if (total === 0) return [];
+      
+      const pageSize = 500;
       const users: User[] = [];
-      for (const doc of results.documents) {
-        if (doc) {
+      
+      for (let offset = 0; offset < total; offset += pageSize) {
+        const results = await this.usersCollection.get({ 
+          limit: pageSize, 
+          offset, 
+          include: ['documents'] 
+        });
+        
+        if (!results.documents) continue;
+        
+        for (const doc of results.documents) {
+          if (!doc) continue;
           try {
             users.push(JSON.parse(doc) as User);
           } catch (parseError) {
@@ -104,7 +112,7 @@ export class ChromaDbService {
           }
         }
       }
-
+      
       return users;
 
     } catch (error) {
