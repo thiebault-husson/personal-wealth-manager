@@ -15,6 +15,9 @@
     "type-check": "tsc --noEmit",
     "lint": "echo '✅ Linting passed (ESLint not configured yet)'",
     "test": "echo '✅ Tests passed (Jest not configured yet)'",
+    "test-api": "node test-api.js",
+    "test-api-shell": "./test-api.sh",
+    "test-manual": "echo '📋 Manual test instructions in TEST-PROTOCOL.md'",
     "quality-check": "npm run type-check && npm run lint && echo '✅ All quality checks passed!'"
   },
   "keywords": [],

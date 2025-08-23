@@ -22,12 +22,14 @@ export class ChromaDbService {
 
       this.usersCollection = await this.client.getOrCreateCollection({
         name: 'users',
-        metadata: { description: 'User profiles' }
+        metadata: { description: 'User profiles' },
+        embeddingFunction: undefined // Disable embeddings for basic document storage
       });
 
       this.accountsCollection = await this.client.getOrCreateCollection({
         name: 'accounts',
-        metadata: { description: 'User accounts' }
+        metadata: { description: 'User accounts' },
+        embeddingFunction: undefined // Disable embeddings for basic document storage
       });
 
       this.isInitialized = true;
