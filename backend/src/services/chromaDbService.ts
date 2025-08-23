@@ -1,4 +1,5 @@
 import { ChromaClient } from 'chromadb';
+import { DefaultEmbeddingFunction } from '@chroma-core/default-embed';
 import type { User, Account } from '../../../shared/types/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -20,22 +21,33 @@ export class ChromaDbService {
       await this.client.heartbeat();
       console.log('✅ ChromaDB connection established');
 
-      // Create collections without embedding function for basic document storage
+      // Create embedding function for ChromaDB v3.0+
+      const embeddingFunction = new DefaultEmbeddingFunction();
+
+      // Create collections with proper embedding function
       try {
-        this.usersCollection = await this.client.getCollection({ name: 'users' });
+        this.usersCollection = await this.client.getCollection({ 
+          name: 'users',
+          embeddingFunction: embeddingFunction
+        });
       } catch {
         this.usersCollection = await this.client.createCollection({
           name: 'users',
-          metadata: { description: 'User profiles' }
+          metadata: { description: 'User profiles' },
+          embeddingFunction: embeddingFunction
         });
       }
 
       try {
-        this.accountsCollection = await this.client.getCollection({ name: 'accounts' });
+        this.accountsCollection = await this.client.getCollection({ 
+          name: 'accounts',
+          embeddingFunction: embeddingFunction
+        });
       } catch {
         this.accountsCollection = await this.client.createCollection({
           name: 'accounts',
-          metadata: { description: 'User accounts' }
+          metadata: { description: 'User accounts' },
+          embeddingFunction: embeddingFunction
         });
       }
 
