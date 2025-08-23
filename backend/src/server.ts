@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import userRoutes from './routes/users.js';
+import { UserService } from './services/userService.js';
 
 // Load environment variables
 dotenv.config();
@@ -12,13 +14,17 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Routes
+app.use('/users', userRoutes);
+
 // Health check endpoint - you can test this immediately!
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     message: 'Personal Wealth Manager API is running',
     timestamp: new Date().toISOString(),
-    version: '1.0.0'
+    version: '1.0.0',
+    users_count: UserService.getUserCount()
   });
 });
 
@@ -29,7 +35,7 @@ app.get('/', (req, res) => {
     description: 'AI-powered personal financial advisor with RAG capabilities',
     endpoints: {
       health: '/health',
-      users: '/users (coming soon)',
+      users: '/users',
       accounts: '/accounts (coming soon)',
       query: '/query (coming soon)'
     }
