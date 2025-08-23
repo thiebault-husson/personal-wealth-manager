@@ -15,6 +15,14 @@ build/
 frontend/dist/
 frontend/build/
 
+# TypeScript compiled files
+*.js
+*.js.map
+*.d.ts
+*.d.ts.map
+!frontend/src/**/*.js
+!frontend/src/**/*.d.ts
+
 # Database
 backend/db/
 *.db
@@ -34,6 +42,9 @@ lerna-debug.log*
 .idea/
 *.swp
 *.swo
+
+# Development rules (coding standards)
+cursor-rules/
 
 # OS
 .DS_Store

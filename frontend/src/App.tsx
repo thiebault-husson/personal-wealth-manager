@@ -60,7 +60,7 @@ function App() {
   };
 
   if (!apiHealth) {
-    return (
+  return (
       <div className="app-container">
         <div className="error-state">
           <h1>🔌 Connection Error</h1>
@@ -178,7 +178,7 @@ function App() {
         )}
         <p>© 2024 Personal Wealth Manager MVP</p>
       </footer>
-    </div>
+      </div>
   );
 }
 
