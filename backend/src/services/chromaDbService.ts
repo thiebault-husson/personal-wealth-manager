@@ -8,6 +8,10 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export class ChromaDbService {
   private static client: ChromaClient;
+  // If chromadb exposes a Collection type in your version, prefer it here:
+  // import type { Collection } from 'chromadb';
+  // private static usersCollection: Collection;
+  // private static accountsCollection: Collection;
   private static usersCollection: any;
   private static accountsCollection: any;
   private static isInitialized = false;
