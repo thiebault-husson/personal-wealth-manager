@@ -1,5 +1,5 @@
 import { ChromaClient } from 'chromadb';
-import type { User } from '../../../shared/types/index.js';
+import type { User, Account } from '../../../shared/types/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 export class ChromaDbService {
   private static client: ChromaClient;
   private static usersCollection: any;
+  private static accountsCollection: any;
   private static isInitialized = false;
 
   static async initialize(): Promise<void> {
@@ -22,6 +23,11 @@ export class ChromaDbService {
       this.usersCollection = await this.client.getOrCreateCollection({
         name: 'users',
         metadata: { description: 'User profiles' }
+      });
+
+      this.accountsCollection = await this.client.getOrCreateCollection({
+        name: 'accounts',
+        metadata: { description: 'User accounts' }
       });
 
       this.isInitialized = true;
@@ -148,6 +154,179 @@ export class ChromaDbService {
       return results;
     } catch (error) {
       console.error('❌ Failed to get user count:', error);
+      return 0;
+    }
+  }
+
+  // Account methods
+  static async addAccount(account: Account): Promise<Account> {
+    await this.ensureInitialized();
+
+    try {
+      await this.accountsCollection.add({
+        ids: [account.id],
+        documents: [JSON.stringify(account)],
+        metadatas: [{
+          account_id: account.id,
+          user_id: account.user_id,
+          account_type: account.account_type,
+          created_at: new Date().toISOString()
+        }]
+      });
+
+      return account;
+    } catch (error) {
+      console.error('❌ Failed to add account:', error);
+      throw new Error(`Failed to add account: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  static async getAccountById(id: string): Promise<Account | null> {
+    await this.ensureInitialized();
+
+    try {
+      const results = await this.accountsCollection.get({ ids: [id] });
+
+      if (!results.documents || results.documents.length === 0) {
+        return null;
+      }
+
+      const accountDoc = results.documents[0];
+      return accountDoc ? JSON.parse(accountDoc) as Account : null;
+
+    } catch (error) {
+      console.error(`❌ Failed to get account ${id}:`, error);
+      return null;
+    }
+  }
+
+  static async getAccountsByUserId(userId: string): Promise<Account[]> {
+    await this.ensureInitialized();
+
+    try {
+      const results = await this.accountsCollection.query({
+        where: { user_id: userId },
+        nResults: 100,
+        include: ['documents']
+      });
+
+      if (!results.documents || results.documents.length === 0) {
+        return [];
+      }
+
+      const accounts: Account[] = [];
+      for (const doc of results.documents) {
+        if (doc) {
+          try {
+            accounts.push(JSON.parse(doc) as Account);
+          } catch (parseError) {
+            console.warn('⚠️ Failed to parse account document:', parseError);
+          }
+        }
+      }
+
+      return accounts;
+    } catch (error) {
+      console.error(`❌ Failed to get accounts for user ${userId}:`, error);
+      return [];
+    }
+  }
+
+  static async getAllAccounts(): Promise<Account[]> {
+    await this.ensureInitialized();
+
+    try {
+      const total = await this.getAccountCount();
+      if (total === 0) return [];
+      
+      const pageSize = 500;
+      const accounts: Account[] = [];
+      
+      for (let offset = 0; offset < total; offset += pageSize) {
+        const results = await this.accountsCollection.get({ 
+          limit: pageSize, 
+          offset, 
+          include: ['documents'] 
+        });
+        
+        if (!results.documents) continue;
+        
+        for (const doc of results.documents) {
+          if (!doc) continue;
+          try {
+            accounts.push(JSON.parse(doc) as Account);
+          } catch (parseError) {
+            console.warn('⚠️ Failed to parse account document:', parseError);
+          }
+        }
+      }
+      
+      return accounts;
+    } catch (error) {
+      console.error('❌ Failed to get all accounts:', error);
+      return [];
+    }
+  }
+
+  static async updateAccount(account: Account): Promise<Account> {
+    await this.ensureInitialized();
+
+    try {
+      await this.accountsCollection.update({
+        ids: [account.id],
+        documents: [JSON.stringify(account)],
+        metadatas: [{
+          account_id: account.id,
+          user_id: account.user_id,
+          account_type: account.account_type,
+          updated_at: new Date().toISOString()
+        }]
+      });
+
+      return account;
+    } catch (error) {
+      console.error('❌ Failed to update account:', error);
+      throw new Error(`Failed to update account: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  static async deleteAccount(id: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    try {
+      await this.accountsCollection.delete({ ids: [id] });
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to delete account ${id}:`, error);
+      return false;
+    }
+  }
+
+  static async getAccountCount(): Promise<number> {
+    await this.ensureInitialized();
+
+    try {
+      const results = await this.accountsCollection.count();
+      return results;
+    } catch (error) {
+      console.error('❌ Failed to get account count:', error);
+      return 0;
+    }
+  }
+
+  static async getAccountCountByUserId(userId: string): Promise<number> {
+    await this.ensureInitialized();
+
+    try {
+      const results = await this.accountsCollection.query({
+        where: { user_id: userId },
+        nResults: 1,
+        include: []
+      });
+
+      return results.ids ? results.ids.length : 0;
+    } catch (error) {
+      console.error(`❌ Failed to get account count for user ${userId}:`, error);
       return 0;
     }
   }

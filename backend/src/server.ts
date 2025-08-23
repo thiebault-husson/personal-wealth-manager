@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import userRoutes from './routes/users.js';
+import accountRoutes from './routes/accounts.js';
 import { UserService } from './services/userService.js';
 
 // Load environment variables
@@ -16,6 +17,7 @@ app.use(express.json({ limit: '1mb' }));
 
 // Routes
 app.use('/users', userRoutes);
+app.use('/accounts', accountRoutes);
 
 // Health check endpoint - you can test this immediately!
 app.get('/health', async (req, res) => {
@@ -48,7 +50,7 @@ app.get('/', (req, res) => {
     endpoints: {
       health: '/health',
       users: '/users',
-      accounts: '/accounts (coming soon)',
+      accounts: '/accounts',
       query: '/query (coming soon)'
     }
   });
