@@ -19,14 +19,25 @@ app.use('/users', userRoutes);
 
 // Health check endpoint - you can test this immediately!
 app.get('/health', async (req, res) => {
-  const users_count = await UserService.getUserCount();
-  res.json({ 
-    status: 'ok', 
-    message: 'Personal Wealth Manager API is running',
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version ?? '1.0.0',
-    users_count
-  });
+  try {
+    const users_count = await UserService.getUserCount();
+    res.json({
+      status: 'ok',
+      message: 'Personal Wealth Manager API is running',
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version ?? '1.0.0',
+      users_count
+    });
+  } catch (err) {
+    console.error('Health check dependency failure:', err);
+    res.status(503).json({
+      status: 'degraded',
+      message: 'Health check failed: cannot access user store',
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version ?? '1.0.0',
+      users_count: null
+    });
+  }
 });
 
 // Basic info endpoint
