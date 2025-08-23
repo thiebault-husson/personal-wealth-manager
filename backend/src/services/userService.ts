@@ -1,9 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { User } from '../../../shared/types/index.js';
 import type { CreateUserInput } from '../validators/user/profile.js';
-
-// In-memory storage for now (will be replaced with ChromaDB)
-const users: User[] = [];
+import { ChromaDbService } from './chromaDbService.js';
 
 export class UserService {
   /**
@@ -14,14 +11,13 @@ export class UserService {
     const normalizedEmail = userData.email.toLowerCase().trim();
     
     // Check if email already exists
-    const existingUser = users.find(user => user.email === normalizedEmail);
+    const existingUser = await ChromaDbService.getUserByEmail(normalizedEmail);
     if (existingUser) {
       throw new Error('User with this email already exists');
     }
 
-    // Create new user
-    const newUser: User = {
-      id: uuidv4(),
+    // Prepare user data
+    const userToCreate = {
       full_name: userData.full_name.trim(),
       email: normalizedEmail,
       filing_status: userData.filing_status,
@@ -33,13 +29,14 @@ export class UserService {
       goals: userData.goals.map(goal => goal.trim()) as [string, string, string]
     };
 
-    // Store user
-    users.push(newUser);
+    // Create user in ChromaDB
+    const newUser = await ChromaDbService.createUser(userToCreate);
 
     if (process.env.NODE_ENV !== 'test') {
       const maskedEmail = newUser.email.replace(/(.{2}).+(@.+)/, '$1***$2');
       console.log(`✅ Created user: ${newUser.full_name} (${maskedEmail})`);
     }
+    
     return newUser;
   }
 
@@ -47,21 +44,20 @@ export class UserService {
    * Get user by ID
    */
   static async getUserById(id: string): Promise<User | null> {
-    const user = users.find(user => user.id === id);
-    return user || null;
+    return await ChromaDbService.getUserById(id);
   }
 
   /**
    * Get all users (for testing purposes)
    */
   static async getAllUsers(): Promise<User[]> {
-    return [...users]; // Return copy to prevent direct mutation
+    return await ChromaDbService.getAllUsers();
   }
 
   /**
    * Get user count (for health checks)
    */
-  static getUserCount(): number {
-    return users.length;
+  static async getUserCount(): Promise<number> {
+    return await ChromaDbService.getUserCount();
   }
 }
