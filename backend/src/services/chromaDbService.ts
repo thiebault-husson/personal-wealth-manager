@@ -20,17 +20,24 @@ export class ChromaDbService {
       await this.client.heartbeat();
       console.log('✅ ChromaDB connection established');
 
-      this.usersCollection = await this.client.getOrCreateCollection({
-        name: 'users',
-        metadata: { description: 'User profiles' },
-        embeddingFunction: undefined // Disable embeddings for basic document storage
-      });
+      // Create collections without embedding function for basic document storage
+      try {
+        this.usersCollection = await this.client.getCollection({ name: 'users' });
+      } catch {
+        this.usersCollection = await this.client.createCollection({
+          name: 'users',
+          metadata: { description: 'User profiles' }
+        });
+      }
 
-      this.accountsCollection = await this.client.getOrCreateCollection({
-        name: 'accounts',
-        metadata: { description: 'User accounts' },
-        embeddingFunction: undefined // Disable embeddings for basic document storage
-      });
+      try {
+        this.accountsCollection = await this.client.getCollection({ name: 'accounts' });
+      } catch {
+        this.accountsCollection = await this.client.createCollection({
+          name: 'accounts',
+          metadata: { description: 'User accounts' }
+        });
+      }
 
       this.isInitialized = true;
       console.log('✅ ChromaDB service initialized');
@@ -133,14 +140,9 @@ export class ChromaDbService {
     await this.ensureInitialized();
 
     try {
-      const results = await this.usersCollection.get({ where: { email: email } });
-
-      if (!results.documents || results.documents.length === 0) {
-        return null;
-      }
-
-      const userDoc = results.documents[0];
-      return userDoc ? JSON.parse(userDoc) as User : null;
+      // Fallback: get all users and filter by email (for compatibility)
+      const allUsers = await this.getAllUsers();
+      return allUsers.find(user => user.email === email) || null;
 
     } catch (error) {
       console.error(`❌ Failed to get user by email ${email}:`, error);
@@ -206,28 +208,10 @@ export class ChromaDbService {
     await this.ensureInitialized();
 
     try {
-      const results = await this.accountsCollection.query({
-        where: { user_id: userId },
-        nResults: 100,
-        include: ['documents']
-      });
+      // Fallback: get all accounts and filter by user_id (for compatibility)
+      const allAccounts = await this.getAllAccounts();
+      return allAccounts.filter(account => account.user_id === userId);
 
-      if (!results.documents || results.documents.length === 0) {
-        return [];
-      }
-
-      const accounts: Account[] = [];
-      for (const doc of results.documents) {
-        if (doc) {
-          try {
-            accounts.push(JSON.parse(doc) as Account);
-          } catch (parseError) {
-            console.warn('⚠️ Failed to parse account document:', parseError);
-          }
-        }
-      }
-
-      return accounts;
     } catch (error) {
       console.error(`❌ Failed to get accounts for user ${userId}:`, error);
       return [];
@@ -320,13 +304,9 @@ export class ChromaDbService {
     await this.ensureInitialized();
 
     try {
-      const results = await this.accountsCollection.query({
-        where: { user_id: userId },
-        nResults: 1,
-        include: []
-      });
-
-      return results.ids ? results.ids.length : 0;
+      // Fallback: get accounts by user ID and count them
+      const userAccounts = await this.getAccountsByUserId(userId);
+      return userAccounts.length;
     } catch (error) {
       console.error(`❌ Failed to get account count for user ${userId}:`, error);
       return 0;
