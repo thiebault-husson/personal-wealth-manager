@@ -8,6 +8,7 @@ set -e
 BASE_URL="http://localhost:3001"
 USER_ID=""
 ACCOUNT_IDS=()
+POSITION_IDS=()
 
 # Colors for output
 RED='\033[0;31m'
@@ -249,6 +250,180 @@ test_update_balance() {
     fi
 }
 
+# Test position creation
+test_create_positions() {
+    log_info "Testing position creation..."
+    
+    if [ ${#ACCOUNT_IDS[@]} -eq 0 ]; then
+        log_error "No accounts available"
+        return 1
+    fi
+    
+    # Create AAPL position
+    position_data='{
+        "account_id": "'${ACCOUNT_IDS[0]}'",
+        "ticker": "AAPL",
+        "asset_type": "stock",
+        "quantity": 100,
+        "value": 15000
+    }'
+    
+    response=$(curl -s -X POST "$BASE_URL/positions" \
+        -H "Content-Type: application/json" \
+        -d "$position_data")
+    
+    if echo "$response" | grep -q '"success":true'; then
+        position_id=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        POSITION_IDS+=("$position_id")
+        log_success "AAPL position created"
+        log_info "Position ID: $position_id"
+    else
+        log_error "AAPL position creation failed"
+        echo "   Response: $response"
+        return 1
+    fi
+    
+    # Create TSLA position
+    position_data='{
+        "account_id": "'${ACCOUNT_IDS[0]}'",
+        "ticker": "TSLA",
+        "asset_type": "stock",
+        "quantity": 50,
+        "value": 12000
+    }'
+    
+    response=$(curl -s -X POST "$BASE_URL/positions" \
+        -H "Content-Type: application/json" \
+        -d "$position_data")
+    
+    if echo "$response" | grep -q '"success":true'; then
+        position_id=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        POSITION_IDS+=("$position_id")
+        log_success "TSLA position created"
+        log_info "Position ID: $position_id"
+    else
+        log_error "TSLA position creation failed"
+        echo "   Response: $response"
+        return 1
+    fi
+}
+
+# Test get positions
+test_get_positions() {
+    log_info "Testing get positions..."
+    
+    if [ ${#ACCOUNT_IDS[@]} -eq 0 ]; then
+        log_error "No accounts available"
+        return 1
+    fi
+    
+    # Get positions by account ID
+    response=$(curl -s "$BASE_URL/positions/account/${ACCOUNT_IDS[0]}")
+    
+    if echo "$response" | grep -q '"success":true'; then
+        count=$(echo "$response" | grep -o '"count":[0-9]*' | cut -d':' -f2)
+        log_success "Retrieved $count positions for account"
+    else
+        log_error "Get account positions failed"
+        echo "   Response: $response"
+        return 1
+    fi
+    
+    # Get individual position
+    if [ ${#POSITION_IDS[@]} -gt 0 ]; then
+        position_id="${POSITION_IDS[0]}"
+        response=$(curl -s "$BASE_URL/positions/$position_id")
+        
+        if echo "$response" | grep -q '"success":true'; then
+            log_success "Retrieved individual position"
+        else
+            log_error "Get individual position failed"
+            echo "   Response: $response"
+            return 1
+        fi
+    fi
+    
+    # Get positions by user ID
+    if [ -n "$USER_ID" ]; then
+        response=$(curl -s "$BASE_URL/positions/user/$USER_ID")
+        
+        if echo "$response" | grep -q '"success":true'; then
+            count=$(echo "$response" | grep -o '"count":[0-9]*' | cut -d':' -f2)
+            log_success "Retrieved $count positions for user"
+        else
+            log_error "Get user positions failed"
+            echo "   Response: $response"
+            return 1
+        fi
+    fi
+}
+
+# Test position updates
+test_update_positions() {
+    log_info "Testing position updates..."
+    
+    if [ ${#POSITION_IDS[@]} -eq 0 ]; then
+        log_error "No positions available"
+        return 1
+    fi
+    
+    position_id="${POSITION_IDS[0]}"
+    
+    # Update quantity
+    quantity_data='{"quantity": 150}'
+    
+    response=$(curl -s -X PUT "$BASE_URL/positions/$position_id/quantity" \
+        -H "Content-Type: application/json" \
+        -d "$quantity_data")
+    
+    if echo "$response" | grep -q '"success":true'; then
+        log_success "Position quantity updated"
+    else
+        log_error "Position quantity update failed"
+        echo "   Response: $response"
+        return 1
+    fi
+    
+    # Update value
+    value_data='{"value": 22500}'
+    
+    response=$(curl -s -X PUT "$BASE_URL/positions/$position_id/value" \
+        -H "Content-Type: application/json" \
+        -d "$value_data")
+    
+    if echo "$response" | grep -q '"success":true'; then
+        log_success "Position value updated"
+    else
+        log_error "Position value update failed"
+        echo "   Response: $response"
+        return 1
+    fi
+}
+
+# Test portfolio summary
+test_portfolio_summary() {
+    log_info "Testing portfolio summary..."
+    
+    if [ -z "$USER_ID" ]; then
+        log_error "No user ID available"
+        return 1
+    fi
+    
+    response=$(curl -s "$BASE_URL/positions/user/$USER_ID/portfolio")
+    
+    if echo "$response" | grep -q '"success":true'; then
+        log_success "Portfolio summary retrieved"
+        # Extract total value if possible
+        if echo "$response" | grep -q '"total_value"'; then
+            log_info "Portfolio summary includes total value"
+        fi
+    else
+        log_error "Portfolio summary failed"
+        echo "   Response: $response"
+        return 1
+    fi
+}
+
 # Test validation errors
 test_validation() {
     log_info "Testing validation errors..."
@@ -310,16 +485,27 @@ test_error_handling() {
 cleanup() {
     log_info "Cleaning up test data..."
     
-    # Delete test accounts
-    deleted_count=0
-    for account_id in "${ACCOUNT_IDS[@]}"; do
-        response=$(curl -s -X DELETE "$BASE_URL/accounts/$account_id")
+    # Delete test positions
+    deleted_positions=0
+    for position_id in "${POSITION_IDS[@]}"; do
+        response=$(curl -s -X DELETE "$BASE_URL/positions/$position_id")
         if echo "$response" | grep -q '"success":true'; then
-            ((deleted_count++))
+            ((deleted_positions++))
         fi
     done
     
-    log_success "Cleaned up $deleted_count/${#ACCOUNT_IDS[@]} test accounts"
+    log_success "Cleaned up $deleted_positions/${#POSITION_IDS[@]} test positions"
+    
+    # Delete test accounts
+    deleted_accounts=0
+    for account_id in "${ACCOUNT_IDS[@]}"; do
+        response=$(curl -s -X DELETE "$BASE_URL/accounts/$account_id")
+        if echo "$response" | grep -q '"success":true'; then
+            ((deleted_accounts++))
+        fi
+    done
+    
+    log_success "Cleaned up $deleted_accounts/${#ACCOUNT_IDS[@]} test accounts"
     
     if [ -n "$USER_ID" ]; then
         log_warning "Test user $USER_ID remains in database (no DELETE endpoint)"
@@ -353,6 +539,10 @@ main() {
         "test_create_accounts:Account Creation"
         "test_get_accounts:Get Accounts"
         "test_update_balance:Update Balance"
+        "test_create_positions:Position Creation"
+        "test_get_positions:Get Positions"
+        "test_update_positions:Update Positions"
+        "test_portfolio_summary:Portfolio Summary"
         "test_validation:Validation"
         "test_error_handling:Error Handling"
     )

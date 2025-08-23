@@ -1,6 +1,6 @@
 import { ChromaClient } from 'chromadb';
 import { DefaultEmbeddingFunction } from '@chroma-core/default-embed';
-import type { User, Account } from '../../../shared/types/index.js';
+import type { User, Account, Position } from '../../../shared/types/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -12,8 +12,10 @@ export class ChromaDbService {
   // import type { Collection } from 'chromadb';
   // private static usersCollection: Collection;
   // private static accountsCollection: Collection;
+  // private static positionsCollection: Collection;
   private static usersCollection: any;
   private static accountsCollection: any;
+  private static positionsCollection: any;
   private static isInitialized = false;
 
   static async initialize(): Promise<void> {
@@ -51,6 +53,19 @@ export class ChromaDbService {
         this.accountsCollection = await this.client.createCollection({
           name: 'accounts',
           metadata: { description: 'User accounts' },
+          embeddingFunction: embeddingFunction
+        });
+      }
+
+      try {
+        this.positionsCollection = await this.client.getCollection({ 
+          name: 'positions',
+          embeddingFunction: embeddingFunction
+        });
+      } catch {
+        this.positionsCollection = await this.client.createCollection({
+          name: 'positions',
+          metadata: { description: 'Account positions' },
           embeddingFunction: embeddingFunction
         });
       }
@@ -325,6 +340,159 @@ export class ChromaDbService {
       return userAccounts.length;
     } catch (error) {
       console.error(`❌ Failed to get account count for user ${userId}:`, error);
+      return 0;
+    }
+  }
+
+  // Position methods
+  static async addPosition(position: Position): Promise<Position> {
+    await this.ensureInitialized();
+
+    try {
+      await this.positionsCollection.add({
+        ids: [position.id],
+        documents: [JSON.stringify(position)],
+        metadatas: [{
+          position_id: position.id,
+          account_id: position.account_id,
+          ticker: position.ticker,
+          asset_type: position.asset_type,
+          created_at: new Date().toISOString()
+        }]
+      });
+
+      return position;
+    } catch (error) {
+      console.error('❌ Failed to add position:', error);
+      throw new Error(`Failed to add position: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  static async getPositionById(id: string): Promise<Position | null> {
+    await this.ensureInitialized();
+
+    try {
+      const results = await this.positionsCollection.get({ ids: [id] });
+
+      if (!results.documents || results.documents.length === 0) {
+        return null;
+      }
+
+      const positionDoc = results.documents[0];
+      return positionDoc ? JSON.parse(positionDoc) as Position : null;
+
+    } catch (error) {
+      console.error(`❌ Failed to get position ${id}:`, error);
+      return null;
+    }
+  }
+
+  static async getPositionsByAccountId(accountId: string): Promise<Position[]> {
+    await this.ensureInitialized();
+
+    try {
+      // Fallback: get all positions and filter by account_id (for compatibility)
+      const allPositions = await this.getAllPositions();
+      return allPositions.filter(position => position.account_id === accountId);
+
+    } catch (error) {
+      console.error(`❌ Failed to get positions for account ${accountId}:`, error);
+      return [];
+    }
+  }
+
+  static async getAllPositions(): Promise<Position[]> {
+    await this.ensureInitialized();
+
+    try {
+      const total = await this.getPositionCount();
+      if (total === 0) return [];
+      
+      const pageSize = 500;
+      const positions: Position[] = [];
+      
+      for (let offset = 0; offset < total; offset += pageSize) {
+        const results = await this.positionsCollection.get({ 
+          limit: pageSize, 
+          offset, 
+          include: ['documents'] 
+        });
+        
+        if (!results.documents) continue;
+        
+        for (const doc of results.documents) {
+          if (!doc) continue;
+          try {
+            positions.push(JSON.parse(doc) as Position);
+          } catch (parseError) {
+            console.warn('⚠️ Failed to parse position document:', parseError);
+          }
+        }
+      }
+      
+      return positions;
+    } catch (error) {
+      console.error('❌ Failed to get all positions:', error);
+      return [];
+    }
+  }
+
+  static async updatePosition(position: Position): Promise<Position> {
+    await this.ensureInitialized();
+
+    try {
+      await this.positionsCollection.update({
+        ids: [position.id],
+        documents: [JSON.stringify(position)],
+        metadatas: [{
+          position_id: position.id,
+          account_id: position.account_id,
+          ticker: position.ticker,
+          asset_type: position.asset_type,
+          updated_at: new Date().toISOString()
+        }]
+      });
+
+      return position;
+    } catch (error) {
+      console.error('❌ Failed to update position:', error);
+      throw new Error(`Failed to update position: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  static async deletePosition(id: string): Promise<boolean> {
+    await this.ensureInitialized();
+
+    try {
+      await this.positionsCollection.delete({ ids: [id] });
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to delete position ${id}:`, error);
+      return false;
+    }
+  }
+
+  static async getPositionCount(): Promise<number> {
+    await this.ensureInitialized();
+
+    try {
+      const results = await this.positionsCollection.count();
+      return results;
+    } catch (error) {
+      console.error('❌ Failed to get position count:', error);
+      return 0;
+    }
+  }
+
+  static async getPositionCountByAccountId(accountId: string): Promise<number> {
+    await this.ensureInitialized();
+
+    try {
+      // Fallback: get positions by account ID and count them
+      const accountPositions = await this.getPositionsByAccountId(accountId);
+      return accountPositions.length;
+    } catch (error) {
+      console.error(`❌ Failed to get position count for account ${accountId}:`, error);
       return 0;
     }
   }

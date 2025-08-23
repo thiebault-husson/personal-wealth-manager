@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import userRoutes from './routes/users.js';
 import accountRoutes from './routes/accounts.js';
+import positionRoutes from './routes/positions.js';
 import { UserService } from './services/userService.js';
 import { ChromaDbService } from './services/chromaDbService.js';
 
@@ -19,19 +20,22 @@ app.use(express.json({ limit: '1mb' }));
 // Routes
 app.use('/users', userRoutes);
 app.use('/accounts', accountRoutes);
+app.use('/positions', positionRoutes);
 
 // Health check endpoint - you can test this immediately!
 app.get('/health', async (req, res) => {
   try {
     const users_count = await UserService.getUserCount();
     const accounts_count = await ChromaDbService.getAccountCount();
+    const positions_count = await ChromaDbService.getPositionCount();
     res.json({
       status: 'ok',
       message: 'Personal Wealth Manager API is running',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '1.0.0',
       users_count,
-      accounts_count
+      accounts_count,
+      positions_count
     });
   } catch (err) {
     console.error('Health check dependency failure:', err);
@@ -41,7 +45,8 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '1.0.0',
       users_count: null,
-      accounts_count: null
+      accounts_count: null,
+      positions_count: null
     });
   }
 });
@@ -55,6 +60,7 @@ app.get('/', (req, res) => {
       health: '/health',
       users: '/users',
       accounts: '/accounts',
+      positions: '/positions',
       query: '/query (coming soon)'
     }
   });
