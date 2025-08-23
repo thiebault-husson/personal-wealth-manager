@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 
 // Routes
 app.use('/users', userRoutes);
@@ -23,7 +23,7 @@ app.get('/health', (req, res) => {
     status: 'ok', 
     message: 'Personal Wealth Manager API is running',
     timestamp: new Date().toISOString(),
-    version: '1.0.0',
+    version: process.env.npm_package_version ?? '1.0.0',
     users_count: UserService.getUserCount()
   });
 });

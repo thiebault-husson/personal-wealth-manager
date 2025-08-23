@@ -10,8 +10,11 @@ export class UserService {
    * Create a new user
    */
   static async createUser(userData: CreateUserInput): Promise<User> {
+    // Normalize email for comparison
+    const normalizedEmail = userData.email.toLowerCase().trim();
+    
     // Check if email already exists
-    const existingUser = users.find(user => user.email === userData.email);
+    const existingUser = users.find(user => user.email === normalizedEmail);
     if (existingUser) {
       throw new Error('User with this email already exists');
     }
@@ -20,7 +23,7 @@ export class UserService {
     const newUser: User = {
       id: uuidv4(),
       full_name: userData.full_name.trim(),
-      email: userData.email.toLowerCase().trim(),
+      email: normalizedEmail,
       filing_status: userData.filing_status,
       residency_state: userData.residency_state.trim(),
       residency_city: userData.residency_city.trim(),
@@ -33,7 +36,10 @@ export class UserService {
     // Store user
     users.push(newUser);
 
-    console.log(`✅ Created user: ${newUser.full_name} (${newUser.email})`);
+    if (process.env.NODE_ENV !== 'test') {
+      const maskedEmail = newUser.email.replace(/(.{2}).+(@.+)/, '$1***$2');
+      console.log(`✅ Created user: ${newUser.full_name} (${maskedEmail})`);
+    }
     return newUser;
   }
 

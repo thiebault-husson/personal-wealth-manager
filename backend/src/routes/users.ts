@@ -16,8 +16,8 @@ router.post('/', async (req, res) => {
     // Create user through service
     const newUser = await UserService.createUser(validatedData);
     
-    // Return success response
-    res.status(201).json({
+    // Return success response with Location header
+    res.status(201).location(`/users/${newUser.id}`).json({
       success: true,
       message: 'User created successfully',
       data: newUser
@@ -26,7 +26,7 @@ router.post('/', async (req, res) => {
   } catch (error) {
     // Handle Zod validation errors
     if (error instanceof z.ZodError) {
-      return res.status(400).json({
+      return res.status(422).json({
         success: false,
         message: 'Validation failed',
         errors: error.issues.map((issue) => ({
@@ -39,9 +39,11 @@ router.post('/', async (req, res) => {
     
     // Handle business logic errors (like duplicate email)
     if (error instanceof Error) {
-      return res.status(400).json({
+      const isConflict = /already exists/i.test(error.message) || (error as any).status === 409;
+      return res.status(isConflict ? 409 : 400).json({
         success: false,
-        message: error.message
+        message: error.message,
+        code: isConflict ? 'USER_EMAIL_CONFLICT' : undefined
       });
     }
     
