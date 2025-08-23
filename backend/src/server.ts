@@ -18,13 +18,14 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/users', userRoutes);
 
 // Health check endpoint - you can test this immediately!
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  const users_count = await UserService.getUserCount();
   res.json({ 
     status: 'ok', 
     message: 'Personal Wealth Manager API is running',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version ?? '1.0.0',
-    users_count: UserService.getUserCount()
+    users_count
   });
 });
 
