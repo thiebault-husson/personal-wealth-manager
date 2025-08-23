@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import userRoutes from './routes/users.js';
 import accountRoutes from './routes/accounts.js';
 import { UserService } from './services/userService.js';
+import { ChromaDbService } from './services/chromaDbService.js';
 
 // Load environment variables
 dotenv.config();
@@ -23,21 +24,24 @@ app.use('/accounts', accountRoutes);
 app.get('/health', async (req, res) => {
   try {
     const users_count = await UserService.getUserCount();
+    const accounts_count = await ChromaDbService.getAccountCount();
     res.json({
       status: 'ok',
       message: 'Personal Wealth Manager API is running',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '1.0.0',
-      users_count
+      users_count,
+      accounts_count
     });
   } catch (err) {
     console.error('Health check dependency failure:', err);
     res.status(503).json({
       status: 'degraded',
-      message: 'Health check failed: cannot access user store',
+      message: 'Health check failed: cannot access data stores',
       timestamp: new Date().toISOString(),
       version: process.env.npm_package_version ?? '1.0.0',
-      users_count: null
+      users_count: null,
+      accounts_count: null
     });
   }
 });
