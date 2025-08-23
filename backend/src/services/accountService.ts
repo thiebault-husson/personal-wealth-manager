@@ -62,6 +62,11 @@ export class AccountService {
       return null;
     }
 
+    // Defensive validation at service layer
+    if (!Number.isFinite(newBalance) || newBalance < 0 || newBalance > 999999999.99) {
+      throw new Error('Invalid balance');
+    }
+
     const updatedAccount: Account = {
       ...account,
       balance: newBalance
