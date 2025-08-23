@@ -1,6 +1,6 @@
 import express from 'express';
 import { AccountService } from '../services/accountService.js';
-import { createAccountSchema, accountIdSchema } from '../validators/account/profile.js';
+import { createAccountSchema, accountIdSchema, balanceSchema } from '../validators/account/profile.js';
 
 const router = express.Router();
 
@@ -118,15 +118,7 @@ router.get('/user/:userId', async (req, res) => {
 router.put('/:id/balance', async (req, res) => {
   try {
     const id = accountIdSchema.parse(req.params.id);
-    const { balance } = req.body;
-    
-    if (typeof balance !== 'number' || balance < 0) {
-      return res.status(422).json({
-        success: false,
-        error: 'Invalid balance',
-        message: 'Balance must be a positive number'
-      });
-    }
+    const balance = balanceSchema.parse(req.body.balance);
     
     const updatedAccount = await AccountService.updateAccountBalance(id, balance);
     
