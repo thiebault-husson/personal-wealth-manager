@@ -1,4 +1,5 @@
 import express from 'express';
+import { z } from 'zod';
 import { PositionService } from '../services/positionService.js';
 import { createPositionSchema, positionIdSchema, accountIdSchema, userIdSchema, quantitySchema, valueSchema } from '../validators/position/profile.js';
 
@@ -17,7 +18,18 @@ router.post('/', async (req, res) => {
       data: newPosition,
       message: 'Position created successfully'
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return res.status(422).json({
+        success: false,
+        error: 'Validation failed',
+        errors: error.issues.map((i) => ({
+          field: i.path.join('.'),
+          message: i.message,
+          code: i.code
+        }))
+      });
+    }
     if (error instanceof Error) {
       if (error.message === 'Account not found') {
         return res.status(404).json({
@@ -26,16 +38,17 @@ router.post('/', async (req, res) => {
           message: 'Cannot create position for non-existent account'
         });
       }
-      
-      return res.status(422).json({
+      // Unexpected application error
+      console.error('❌ Position creation error:', error);
+      return res.status(500).json({
         success: false,
-        error: 'Validation failed',
-        message: error.message
+        error: 'Internal server error',
+        message: 'Failed to create position'
       });
     }
     
-    console.error('❌ Position creation error:', error);
-    res.status(500).json({
+    console.error('❌ Position creation error (unknown):', error);
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to create position'
@@ -63,17 +76,17 @@ router.get('/:id', async (req, res) => {
       success: true,
       data: position
     });
-  } catch (error) {
-    if (error instanceof Error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
       return res.status(422).json({
         success: false,
         error: 'Invalid position ID',
-        message: error.message
+        errors: error.issues
       });
     }
     
     console.error('❌ Get position error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to retrieve position'
@@ -94,17 +107,17 @@ router.get('/account/:accountId', async (req, res) => {
       data: positions,
       count: positions.length
     });
-  } catch (error) {
-    if (error instanceof Error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
       return res.status(422).json({
         success: false,
         error: 'Invalid account ID',
-        message: error.message
+        errors: error.issues
       });
     }
     
     console.error('❌ Get account positions error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to retrieve account positions'
@@ -125,17 +138,17 @@ router.get('/user/:userId', async (req, res) => {
       data: positions,
       count: positions.length
     });
-  } catch (error) {
-    if (error instanceof Error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
       return res.status(422).json({
         success: false,
         error: 'Invalid user ID',
-        message: error.message
+        errors: error.issues
       });
     }
     
     console.error('❌ Get user positions error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to retrieve user positions'
@@ -166,7 +179,14 @@ router.put('/:id/quantity', async (req, res) => {
       data: updatedPosition,
       message: 'Position quantity updated successfully'
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return res.status(422).json({
+        success: false,
+        error: 'Validation failed',
+        errors: error.issues
+      });
+    }
     if (error instanceof Error) {
       if (error.message === 'Invalid quantity') {
         return res.status(422).json({
@@ -175,16 +195,17 @@ router.put('/:id/quantity', async (req, res) => {
           message: 'Quantity must be a positive finite number'
         });
       }
-      
-      return res.status(422).json({
+      // Unexpected application error
+      console.error('❌ Update position quantity error:', error);
+      return res.status(500).json({
         success: false,
-        error: 'Validation failed',
-        message: error.message
+        error: 'Internal server error',
+        message: 'Failed to update position quantity'
       });
     }
     
-    console.error('❌ Update position quantity error:', error);
-    res.status(500).json({
+    console.error('❌ Update position quantity error (unknown):', error);
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to update position quantity'
@@ -215,7 +236,14 @@ router.put('/:id/value', async (req, res) => {
       data: updatedPosition,
       message: 'Position value updated successfully'
     });
-  } catch (error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
+      return res.status(422).json({
+        success: false,
+        error: 'Validation failed',
+        errors: error.issues
+      });
+    }
     if (error instanceof Error) {
       if (error.message === 'Invalid value') {
         return res.status(422).json({
@@ -224,16 +252,17 @@ router.put('/:id/value', async (req, res) => {
           message: 'Value must be a positive finite number'
         });
       }
-      
-      return res.status(422).json({
+      // Unexpected application error
+      console.error('❌ Update position value error:', error);
+      return res.status(500).json({
         success: false,
-        error: 'Validation failed',
-        message: error.message
+        error: 'Internal server error',
+        message: 'Failed to update position value'
       });
     }
     
-    console.error('❌ Update position value error:', error);
-    res.status(500).json({
+    console.error('❌ Update position value error (unknown):', error);
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to update position value'
@@ -261,17 +290,17 @@ router.delete('/:id', async (req, res) => {
       success: true,
       message: 'Position deleted successfully'
     });
-  } catch (error) {
-    if (error instanceof Error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
       return res.status(422).json({
         success: false,
         error: 'Invalid position ID',
-        message: error.message
+        errors: error.issues
       });
     }
     
     console.error('❌ Delete position error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to delete position'
@@ -298,17 +327,17 @@ router.get('/user/:userId/portfolio', async (req, res) => {
         asset_breakdown: summary
       }
     });
-  } catch (error) {
-    if (error instanceof Error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
       return res.status(422).json({
         success: false,
         error: 'Invalid user ID',
-        message: error.message
+        errors: error.issues
       });
     }
     
     console.error('❌ Get portfolio summary error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Internal server error',
       message: 'Failed to retrieve portfolio summary'
