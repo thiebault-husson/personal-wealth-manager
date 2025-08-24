@@ -21,11 +21,13 @@ This document outlines the comprehensive test protocol for the Personal Wealth M
 ### Option 1: Automated JavaScript Test (Recommended)
 ```bash
 npm run test-api
+# Runs: node scripts/tests/test-api.js
 ```
 
 ### Option 2: Shell Script Test
 ```bash
 npm run test-api-shell
+# Runs: ./scripts/tests/test-api.sh
 ```
 
 ### Option 3: Manual Testing (See sections below)
