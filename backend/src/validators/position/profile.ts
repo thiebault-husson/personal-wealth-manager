@@ -20,13 +20,16 @@ export const createPositionSchema = z.object({
     .describe("Asset type must be one of: stock, bond, etf, mutual_fund, cash, muni_bond, other"),
   
   quantity: z.number()
+    .finite("Quantity must be a finite number")
     .positive("Quantity must be positive")
     .max(999999999, "Quantity seems unrealistic")
     .describe("Number of shares/units held"),
   
   value: z.number()
+    .finite("Value must be a finite number")
     .positive("Value must be positive")
     .max(999999999.99, "Value seems unrealistic")
+    .refine(v => Math.round(v * 100) === v * 100, "Value must have at most 2 decimal places")
     .describe("Total position value in USD")
 });
 
@@ -37,12 +40,15 @@ export const userIdSchema = z.string().uuid("Invalid user ID format");
 
 // Reusable quantity schema for updates
 export const quantitySchema = z.number()
+  .finite("Quantity must be a finite number")
   .positive("Quantity must be positive")
   .max(999999999, "Quantity seems unrealistic");
 
 // Reusable value schema for updates
 export const valueSchema = z.number()
+  .finite("Value must be a finite number")
   .positive("Value must be positive")
-  .max(999999999.99, "Value seems unrealistic");
+  .max(999999999.99, "Value seems unrealistic")
+  .refine(v => Math.round(v * 100) === v * 100, "Value must have at most 2 decimal places");
 
 export type CreatePositionInput = z.infer<typeof createPositionSchema>;

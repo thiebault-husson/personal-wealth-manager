@@ -5,7 +5,14 @@
 
 set -e
 
-BASE_URL="http://localhost:3001"
+# Detect server port from environment or default to 3000 (server default)
+# If user has .env with PORT=3001, use that, otherwise use server default 3000
+if [ -f .env ] && grep -q "PORT=" .env; then
+    PORT=$(grep "PORT=" .env | cut -d'=' -f2)
+    BASE_URL="${BASE_URL:-http://localhost:$PORT}"
+else
+    BASE_URL="${BASE_URL:-http://localhost:3000}"
+fi
 USER_ID=""
 ACCOUNT_IDS=()
 POSITION_IDS=()
