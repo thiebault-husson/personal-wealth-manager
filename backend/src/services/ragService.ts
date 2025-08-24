@@ -1,6 +1,6 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { ChromaClient } from 'chromadb';
-import { encoding_for_model } from 'tiktoken';
+import { get_encoding } from 'tiktoken';
 import type { User, Account, Position } from '../../../shared/types';
 
 /**
@@ -128,6 +128,12 @@ export class RAGService {
 
     try {
       console.log('🔧 Initializing RAG Service...');
+
+      // Check for required API key
+      if (!process.env.ANTHROPIC_API_KEY) {
+        console.warn('⚠️ ANTHROPIC_API_KEY not set. Fallback embeddings will be used; generative answers will fail.');
+        console.warn('💡 Set ANTHROPIC_API_KEY in your .env file to enable full RAG functionality.');
+      }
 
       // Test ChromaDB connection
       await this.chromaClient.heartbeat();
@@ -323,9 +329,10 @@ Text: ${text.substring(0, 1000)}`
   ): Promise<DocumentChunk[]> {
     console.log(`📄 Chunking document ${documentId} (${content.length} chars)`);
     
+    let encoder: any | undefined;
     try {
       // Initialize tiktoken encoder for accurate token counting
-      const encoder = encoding_for_model('gpt-3.5-turbo'); // Use GPT-3.5 encoding as standard
+      encoder = get_encoding('cl100k_base'); // Use model-agnostic base encoding
       
       const chunks: DocumentChunk[] = [];
       let chunkIndex = 0;
@@ -439,6 +446,8 @@ Text: ${text.substring(0, 1000)}`
       console.error('❌ Error chunking document:', error);
       // Fallback to simple chunking
       return this.fallbackChunking(content, documentId, metadata);
+    } finally {
+      try { encoder?.free?.(); } catch {}
     }
   }
   
@@ -634,6 +643,7 @@ Text: ${text.substring(0, 1000)}`
     return {
       content,
       metadata: {
+        ...baseMetadata, // Document-level metadata first
         chunkId: `${documentId}_chunk_${chunkIndex}`,
         documentId,
         chunkIndex,
@@ -642,8 +652,7 @@ Text: ${text.substring(0, 1000)}`
         hasFormula,
         hasNumbers,
         ...(section && { section }),
-        ...(subsection && { subsection }),
-        ...baseMetadata
+        ...(subsection && { subsection })
       }
     };
   }
@@ -655,7 +664,7 @@ Text: ${text.substring(0, 1000)}`
     console.log('🔄 Using fallback chunking');
     
     const chunks: DocumentChunk[] = [];
-    const encoder = encoding_for_model('gpt-3.5-turbo');
+    const encoder = get_encoding('cl100k_base');
     
     const words = content.split(/\s+/);
     let currentChunk = '';
@@ -704,6 +713,7 @@ Text: ${text.substring(0, 1000)}`
       });
     }
     
+    try { encoder.free(); } catch {}
     return chunks;
   }
 

@@ -144,3 +144,47 @@ export const positionAPI = {
     return result.data;
   }
 };
+
+// RAG API
+export const ragAPI = {
+  async query(userId: string, question: string, signal?: AbortSignal): Promise<{ question: string; response: string; user_context: any }> {
+    console.log('🌐 Making RAG API request:', {
+      url: `${BASE_URL}/rag/query`,
+      userId,
+      question
+    });
+
+    const response = await fetch(`${BASE_URL}/rag/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        question: question
+      }),
+      signal, // Pass the abort signal
+    });
+
+    console.log('📡 RAG API response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('❌ RAG API error response:', errorData);
+      throw new Error(errorData.message || `Failed to query AI: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('✅ RAG API success response:', result);
+    return result.data;
+  },
+
+  async getHealth(): Promise<any> {
+    const response = await fetch(`${BASE_URL}/rag/health`);
+    if (!response.ok) {
+      throw new Error(`Failed to get RAG health: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
+  }
+};

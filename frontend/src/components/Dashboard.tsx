@@ -1,6 +1,7 @@
 import React from 'react';
 import type { User, Account, Position } from '@shared/types';
-import { formatCurrency, prettifyLabel } from '../utils/format';
+import { formatCurrency } from '../utils/format';
+import AIQuery from './AIQuery';
 
 interface DashboardProps {
   user: User;
@@ -14,15 +15,62 @@ const Dashboard: React.FC<DashboardProps> = ({ user, accounts, positions }) => {
   const totalPositionValue = positions.reduce((sum, position) => sum + position.value, 0);
   const totalNetWorth = totalAccountBalance + totalPositionValue;
 
-  // Group positions by asset type
-  const positionsByAssetType = positions.reduce((acc, position) => {
-    if (!acc[position.asset_type]) {
-      acc[position.asset_type] = { count: 0, value: 0 };
+  // Calculate investments (positions + brokerage accounts)
+  const investmentAccounts = accounts.filter(acc => acc.type === 'brokerage');
+  const investmentAccountsValue = investmentAccounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const totalInvestments = totalPositionValue + investmentAccountsValue;
+
+  // Group accounts by type for the table and pie chart
+  const accountsByType = accounts.reduce((acc, account) => {
+    let category = '';
+    switch (account.type) {
+      case 'checking':
+      case 'savings':
+        category = 'Cash';
+        break;
+      case '401k':
+      case '403b':
+      case 'ira_traditional':
+      case 'ira_roth':
+      case 'hsa':
+        category = 'Tax Advantaged';
+        break;
+      case 'brokerage':
+        category = 'Taxable';
+        break;
+      default:
+        category = 'Other';
     }
-    acc[position.asset_type].count++;
-    acc[position.asset_type].value += position.value;
+    
+    if (!acc[category]) {
+      acc[category] = { balance: 0, count: 0 };
+    }
+    acc[category].balance += account.balance;
+    acc[category].count++;
     return acc;
-  }, {} as Record<string, { count: number; value: number }>);
+  }, {} as Record<string, { balance: number; count: number }>);
+
+  // Calculate retirement timeline
+  const currentYear = new Date().getFullYear();
+  const retirementAge = 67; // Standard retirement age
+  const maxAge = 100;
+  const yearsToRetirement = Math.max(0, retirementAge - user.age);
+  const retirementYear = currentYear + yearsToRetirement;
+  const retirementYears = maxAge - retirementAge;
+
+  // Generate timeline markers
+  const timelineMarkers = [];
+  for (let age = user.age; age <= maxAge; age += 10) {
+    timelineMarkers.push({
+      age,
+      year: currentYear + (age - user.age),
+      isRetirement: age === retirementAge,
+      isCurrent: age === user.age
+    });
+  }
+
+  // Sample income data (would come from user profile in real app)
+  const totalIncome = 85000; // This would be from user data
 
   return (
     <div className="dashboard">
@@ -31,140 +79,134 @@ const Dashboard: React.FC<DashboardProps> = ({ user, accounts, positions }) => {
         <p>Welcome back, {user.full_name}!</p>
       </div>
 
-      <div className="dashboard-grid">
-        {/* Portfolio Overview */}
-        <div className="dashboard-card">
-          <h3>💰 Portfolio Overview</h3>
-          <div className="metric-grid">
-            <div className="metric">
-              <div className="metric-value">{formatCurrency(totalNetWorth)}</div>
-              <div className="metric-label">Total Net Worth</div>
-            </div>
-            <div className="metric">
-              <div className="metric-value">{formatCurrency(totalAccountBalance)}</div>
-              <div className="metric-label">Account Balance</div>
-            </div>
-            <div className="metric">
-              <div className="metric-value">{formatCurrency(totalPositionValue)}</div>
-              <div className="metric-label">Investment Value</div>
-            </div>
-          </div>
+      {/* Main Dashboard Card */}
+      <div className="main-dashboard-card">
+        <div className="dashboard-columns">
+          {/* Left Column (1/3) - Table and Pie Chart */}
+          <div className="left-column">
+            {/* Accounts by Type Table */}
+            <div className="accounts-table">
+              <h3>Account Breakdown</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Amount</th>
+                    <th>%</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(accountsByType).map(([type, data]) => {
+                    const percentage = totalNetWorth > 0 ? (data.balance / totalNetWorth) * 100 : 0;
+                    return (
+                      <tr key={type}>
+                        <td>{type}</td>
+                        <td>{formatCurrency(data.balance)}</td>
+                        <td>{percentage.toFixed(1)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
         </div>
 
-        {/* Accounts Summary */}
-        <div className="dashboard-card">
-          <h3>🏦 Accounts ({accounts.length})</h3>
-          {accounts.length > 0 ? (
-            <div className="account-summary">
-              {accounts.map((account) => (
-                <div key={account.id} className="summary-item">
-                  <div className="summary-info">
-                    <strong>{account.name}</strong>
-                    <span className="summary-type">{account.type}</span>
+            {/* Pie Chart Placeholder */}
+            <div className="pie-chart-section">
+              <h4>Net Worth Distribution</h4>
+              <div className="pie-chart-placeholder">
+                {Object.entries(accountsByType).map(([type, data]) => {
+                  const percentage = totalNetWorth > 0 ? (data.balance / totalNetWorth) * 100 : 0;
+                return (
+                    <div key={type} className="pie-segment" style={{
+                      background: `conic-gradient(from 0deg, 
+                        ${type === 'Cash' ? '#4CAF50' : 
+                          type === 'Tax Advantaged' ? '#2196F3' : 
+                          type === 'Taxable' ? '#FF9800' : '#607D8B'} ${percentage}%, 
+                        transparent ${percentage}%)`
+                    }}>
+                      <span>{type}: {percentage.toFixed(1)}%</span>
                   </div>
-                  <div className="summary-value">
-                    {formatCurrency(account.balance)}
+                );
+              })}
+            </div>
+            </div>
+        </div>
+
+          {/* Right Column (2/3) - Three Rows */}
+          <div className="right-column">
+            {/* Row 1 - Net Worth and Investment Cards */}
+            <div className="metrics-row">
+              <div className="metric-card total-net-worth">
+                <div className="metric-value">{formatCurrency(totalNetWorth)}</div>
+                <div className="metric-label">Total Net Worth</div>
+                    </div>
+              <div className="metric-card investments">
+                <div className="metric-value">{formatCurrency(totalInvestments)}</div>
+                <div className="metric-label">Investments</div>
                   </div>
+            </div>
+
+            {/* Row 2 - Retirement Timeline */}
+            <div className="timeline-row">
+              <h4>Retirement Timeline</h4>
+              <div className="timeline-container">
+                <div className="timeline-line">
+                  <div className="timeline-progress" style={{
+                    width: `${(yearsToRetirement / (maxAge - user.age)) * 100}%`
+                  }}></div>
                 </div>
-              ))}
+                <div className="timeline-markers">
+                  {timelineMarkers.map((marker) => (
+                    <div 
+                      key={marker.age} 
+                      className={`timeline-marker ${marker.isCurrent ? 'current' : ''} ${marker.isRetirement ? 'retirement' : ''}`}
+                      style={{
+                        left: `${((marker.age - user.age) / (maxAge - user.age)) * 100}%`
+                      }}
+                    >
+                      <div className="marker-dot"></div>
+                      <div className="marker-label">
+                        <div>Age {marker.age}</div>
+                        <div>{marker.year}</div>
+                      </div>
+                    </div>
+                  ))}
             </div>
-          ) : (
-            <div className="empty-state">
-              <p>No accounts added yet</p>
-            </div>
-          )}
+                <div className="retirement-info">
+                  <p><strong>Projected Retirement:</strong> {retirementYear} (Age {retirementAge})</p>
+                  <p><strong>Retirement Years to Fund:</strong> {retirementYears} years</p>
         </div>
+            </div>
+            </div>
 
-        {/* Asset Allocation */}
-        <div className="dashboard-card">
-          <h3>📈 Asset Allocation</h3>
-          {Object.keys(positionsByAssetType).length > 0 ? (
-            <div className="asset-allocation">
-              {Object.entries(positionsByAssetType).map(([assetType, data]) => {
-                const percentage = totalPositionValue > 0 ? (data.value / totalPositionValue) * 100 : 0;
-                return (
-                  <div key={assetType} className="allocation-item">
-                    <div className="allocation-info">
-                      <strong>{prettifyLabel(assetType)}</strong>
-                      <span className="allocation-count">{data.count} positions</span>
-                    </div>
-                    <div className="allocation-value">
-                      <div>{formatCurrency(data.value)}</div>
-                      <div className="allocation-percentage">{percentage.toFixed(1)}%</div>
-                    </div>
-                  </div>
-                );
-              })}
+            {/* Row 3 - Income Chart */}
+            <div className="income-row">
+              <h4>Total Income</h4>
+              <div className="income-chart">
+                <div className="income-bar" style={{
+                  width: '100%',
+                  background: '#4CAF50',
+                  height: '40px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  paddingLeft: '16px',
+                  color: 'white',
+                  fontWeight: 'bold'
+                }}>
+                  {formatCurrency(totalIncome)}
             </div>
-          ) : (
-            <div className="empty-state">
-              <p>No positions added yet</p>
             </div>
-          )}
-        </div>
-
-        {/* Recent Positions */}
-        <div className="dashboard-card">
-          <h3>📊 Recent Positions</h3>
-          {positions.length > 0 ? (
-            <div className="positions-summary">
-              {positions.slice(-5).map((position) => {
-                const account = accounts.find(a => a.id === position.account_id);
-                return (
-                  <div key={position.id} className="summary-item">
-                    <div className="summary-info">
-                      <strong>{position.ticker}</strong>
-                      <span className="summary-type">{position.asset_type}</span>
-                      <span className="summary-account">{account?.name}</span>
-                    </div>
-                    <div className="summary-value">
-                      <div>{position.quantity} shares</div>
-                      <div>${position.value.toLocaleString()}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="empty-state">
-              <p>No positions added yet</p>
-            </div>
-          )}
-        </div>
-
-        {/* User Profile Summary */}
-        <div className="dashboard-card">
-          <h3>👤 Profile Summary</h3>
-          <div className="profile-summary">
-            <div className="profile-item">
-              <strong>Age:</strong> {user.age}
-            </div>
-            <div className="profile-item">
-              <strong>Location:</strong> {user.residency_city}, {user.residency_state}
-            </div>
-            <div className="profile-item">
-              <strong>Filing Status:</strong> {user.filing_status.replace('_', ' ')}
-            </div>
-            <div className="profile-item">
-              <strong>Risk Tolerance:</strong> {user.risk_tolerance}
-            </div>
-            <div className="profile-item">
-              <strong>Dependents:</strong> {user.dependents}
             </div>
           </div>
         </div>
-
-        {/* Financial Goals */}
-        <div className="dashboard-card">
-          <h3>🎯 Financial Goals</h3>
-          <div className="goals-list">
-            {user.goals.map((goal, index) => (
-              <div key={index} className="goal-item">
-                <span className="goal-number">{index + 1}</span>
-                <span className="goal-text">{goal}</span>
               </div>
-            ))}
-          </div>
+
+      {/* Personal Wealth Advisor Section */}
+      <div className="wealth-advisor-section">
+        <h3>🤖 Ask Your Personal Wealth Advisor</h3>
+        <div className="advisor-container">
+          <AIQuery user={user} />
         </div>
       </div>
     </div>

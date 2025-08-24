@@ -8,7 +8,7 @@
  */
 
 import dotenv from 'dotenv';
-import { RAGService } from '../backend/src/services/ragService.js';
+import { RAGService } from '../backend/src/services/ragService';
 
 // Load environment variables
 dotenv.config();
@@ -156,7 +156,7 @@ Common itemized deductions include:
       age: 35,
       dependents: 0,
       risk_tolerance: 'medium',
-      goals: ['retirement', 'tax_optimization']
+      goals: ['retirement', 'tax_optimization', 'emergency_fund']
     };
 
     const ragResponse = await ragService.queryFinancialAdvice(

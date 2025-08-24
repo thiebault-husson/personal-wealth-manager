@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import userRoutes from './routes/users.js';
 import accountRoutes from './routes/accounts.js';
 import positionRoutes from './routes/positions.js';
+import ragRoutes from './routes/rag.js';
 import { UserService } from './services/userService.js';
 import { ChromaDbService } from './services/chromaDbService.js';
 
@@ -21,6 +22,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use('/users', userRoutes);
 app.use('/accounts', accountRoutes);
 app.use('/positions', positionRoutes);
+app.use('/rag', ragRoutes);
 
 // Health check endpoint - you can test this immediately!
 app.get('/health', async (req, res) => {

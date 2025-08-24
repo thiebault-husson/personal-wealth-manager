@@ -51,9 +51,12 @@ const PositionForm: React.FC<PositionFormProps> = ({
       
       onPositionAdded(position);
       
-      // Reset form
+      // Show brief success feedback
+      setError(null);
+      
+      // Reset form for next position
       setFormData({
-        account_id: accounts[0]?.id || '',
+        account_id: formData.account_id, // Keep the same account selected for convenience
         ticker: '',
         asset_type: 'stock' as Position['asset_type'],
         quantity: 0,
@@ -94,7 +97,7 @@ const PositionForm: React.FC<PositionFormProps> = ({
   return (
     <div className="form-container">
       <h2>📈 Position Management</h2>
-      <p>Add your investment positions and holdings</p>
+      <p>Add your investment positions and holdings. You can add multiple positions - the form will reset after each addition.</p>
 
       {positions.length > 0 && (
         <div className="positions-list">
@@ -200,10 +203,16 @@ const PositionForm: React.FC<PositionFormProps> = ({
           </div>
         </div>
 
-        <button type="submit" disabled={isLoading} className="btn-secondary">
-          {isLoading ? 'Adding Position...' : 'Add Position'}
+        <button type="submit" disabled={isLoading} className="btn-primary">
+          {isLoading ? 'Adding Position...' : '+ Add This Position'}
         </button>
       </form>
+
+      {positions.length > 0 && (
+        <div className="success-message">
+          <span>✅ {positions.length} position{positions.length !== 1 ? 's' : ''} added successfully! You can add more positions above or continue to the dashboard.</span>
+        </div>
+      )}
 
       <div className="form-actions">
         <button 
@@ -212,16 +221,16 @@ const PositionForm: React.FC<PositionFormProps> = ({
           className="btn-link"
           disabled={isLoading}
         >
-          Skip for now
+          {positions.length > 0 ? 'Skip adding more positions' : 'Skip for now'}
         </button>
         
         <button 
           type="button" 
           onClick={onNext} 
-          className="btn-primary"
+          className="btn-secondary"
           disabled={isLoading}
         >
-          Continue to Dashboard →
+          {positions.length > 0 ? 'Continue to Dashboard →' : 'Go to Dashboard (no positions)'}
         </button>
       </div>
     </div>

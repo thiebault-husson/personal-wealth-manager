@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
 import type { User, Account, Position, Insurance } from '@shared/types';
-import { userAPI, healthAPI } from './services/api';
+import { healthAPI } from './services/api';
 import UserProfileForm from './components/UserProfileForm';
 import AccountForm from './components/AccountForm';
 import InsuranceForm from './components/InsuranceForm';
 import PositionForm from './components/PositionForm';
 import Dashboard from './components/Dashboard';
-import AIQuery from './components/AIQuery';
 import './App.css';
 
 type AppStep = 'profile' | 'accounts' | 'insurance' | 'holdings' | 'dashboard';
@@ -209,16 +208,11 @@ function App() {
 
             {currentStep === 'dashboard' && user && (
               <div className="dashboard-container fade-in">
-                <div className="dashboard-main">
-                  <Dashboard 
-                    user={user}
-                    accounts={accounts}
-                    positions={positions}
-                  />
-                </div>
-                <div className="dashboard-sidebar">
-                  <AIQuery user={user} />
-                </div>
+                <Dashboard 
+                  user={user}
+                  accounts={accounts}
+                  positions={positions}
+                />
               </div>
             )}
           </div>

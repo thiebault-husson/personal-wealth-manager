@@ -8,7 +8,7 @@
  */
 
 import dotenv from 'dotenv';
-import { RAGService } from '../backend/src/services/ragService.js';
+import { RAGService } from '../backend/src/services/ragService';
 
 // Load environment variables
 dotenv.config();

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { User } from '@shared/types';
+import { ragAPI } from '../services/api';
 
 interface AIQueryProps {
   user: User;
@@ -18,11 +19,14 @@ const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const mountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    // Cleanup function to abort any pending requests when component unmounts
     return () => {
-      mountedRef.current = false;
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
@@ -30,46 +34,60 @@ const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
     e.preventDefault();
     if (!query.trim()) return;
 
+    // Abort any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
+    console.log('🚀 Starting AI query:', query);
+    console.log('👤 User ID:', user.id);
+    
     setIsLoading(true);
     setResponse('');
 
     try {
-      // TODO: Implement actual AI query endpoint
-      // For now, show a placeholder response
-      await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API delay
+      console.log('📡 Calling RAG API...');
+      // Call the actual RAG API
+      const result = await ragAPI.query(user.id, query, abortControllerRef.current.signal);
+      console.log('✅ RAG API response received:', result);
       
-      // Check if component is still mounted before updating state
-      if (!mountedRef.current) return;
+      // Check if request was aborted
+      if (abortControllerRef.current?.signal.aborted) {
+        console.log('⚠️ Request was aborted, skipping state update');
+        return;
+      }
       
-      setResponse(`🤖 AI Assistant: Thank you for your question, ${user.full_name}! 
-
-"${query}"
-
-I'm currently being developed to provide personalized financial advice based on your profile and portfolio. 
-
-Based on your information:
-- Age: ${user.age}
-- Risk Tolerance: ${user.risk_tolerance}
-- Location: ${user.residency_city}, ${user.residency_state}
-- Goals: ${user.goals.join(', ')}
-
-Once the RAG (Retrieval-Augmented Generation) system is implemented, I'll be able to provide detailed, personalized recommendations on:
-- Tax optimization strategies
-- Asset allocation advice
-- Retirement planning
-- Investment recommendations
-
-Stay tuned for the full AI-powered experience! 🚀`);
-      
+      console.log('📝 Setting response:', result.response.substring(0, 100) + '...');
+      setResponse(result.response);
       setQuery('');
     } catch (error) {
-      // Check if component is still mounted before updating state
-      if (mountedRef.current) {
-        setResponse('❌ Sorry, I encountered an error. Please try again later.');
+      console.error('❌ AI Query error:', error);
+      
+      // Check if request was aborted
+      if (abortControllerRef.current?.signal.aborted) {
+        console.log('⚠️ Request was aborted, skipping error handling');
+        return;
+      }
+      
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      
+      console.log('🔧 Handling error:', errorMessage);
+      
+      // Handle specific error types
+      if (errorMessage.includes('AI service is currently unavailable')) {
+        setResponse('🔧 AI service is currently being configured. The system has financial knowledge but needs the ANTHROPIC_API_KEY to generate responses. Please check back later!');
+      } else if (errorMessage.includes('Knowledge base is currently unavailable')) {
+        setResponse('📚 Knowledge base is temporarily unavailable. Please try again in a moment.');
+      } else {
+        setResponse(`❌ Sorry, I encountered an error: ${errorMessage}. Please try again later.`);
       }
     } finally {
-      // Check if component is still mounted before updating state
-      if (mountedRef.current) {
+      // Check if request was aborted
+      if (!abortControllerRef.current?.signal.aborted) {
+        console.log('🏁 Setting loading to false');
         setIsLoading(false);
       }
     }

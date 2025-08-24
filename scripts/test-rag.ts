@@ -8,7 +8,7 @@
  */
 
 import dotenv from 'dotenv';
-import { RAGService } from '../backend/src/services/ragService.js';
+import { RAGService } from '../backend/src/services/ragService';
 
 // Load environment variables
 dotenv.config();
@@ -53,7 +53,7 @@ async function testRAGService() {
       {
         id: 'acc1',
         user_id: 'test-user',
-        account_type: '401k' as const,
+        type: '401k' as const,
         provider: 'Fidelity',
         balance: 50000,
         currency: 'USD' as const,
