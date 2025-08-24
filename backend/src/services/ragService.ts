@@ -23,6 +23,32 @@ interface DocumentChunk {
 }
 
 /**
+ * Retrieval result interface
+ */
+interface RetrievalResult {
+  content: string;
+  metadata: Record<string, any>;
+  score: number;
+  source: 'vector' | 'keyword' | 'hybrid';
+}
+
+/**
+ * Retrieval filters interface
+ */
+interface RetrievalFilters {
+  source?: string[];
+  category?: string[];
+  dateRange?: {
+    start?: string;
+    end?: string;
+  };
+  hasTable?: boolean;
+  hasFormula?: boolean;
+  section?: string[];
+  [key: string]: any;
+}
+
+/**
  * RAG Service for Personal Wealth Manager
  * 
  * Implements retrieval-augmented generation for financial advice using:
@@ -48,7 +74,9 @@ export class RAGService {
     embeddingDimensions: 384, // Standard embedding size
     
     // Retrieval
-    topK: 5,                  // Number of documents to retrieve
+    topK: 6,                  // Number of documents to retrieve
+    mmrLambda: 0.4,          // MMR diversity parameter (0.3-0.5 recommended)
+    hybridAlpha: 0.7,        // Hybrid search weight (0.7 = 70% vector, 30% keyword)
     
     // Response Generation - Use Claude 3.5 Haiku for cost-effective responses
     responseModel: 'claude-3-5-haiku-20241022',   // Latest Haiku model - fastest and most cost-effective
@@ -669,32 +697,396 @@ Text: ${text.substring(0, 1000)}`
   }
 
   /**
+   * Advanced document retrieval using hybrid search with MMR
+   * 
+   * Combines vector similarity search with BM25 keyword matching,
+   * then applies Maximal Marginal Relevance for diversity.
+   */
+  public async retrieveDocuments(
+    query: string,
+    filters: RetrievalFilters = {},
+    topK: number = this.config.topK
+  ): Promise<RetrievalResult[]> {
+    await this.initialize();
+
+    try {
+      console.log(`🔍 Retrieving documents for query: "${query}"`);
+
+      // Step 1: Vector similarity search
+      const vectorResults = await this.vectorSearch(query, filters, Math.min(topK * 2, 20));
+      console.log(`📊 Vector search returned ${vectorResults.length} results`);
+
+      // Step 2: BM25 keyword search
+      const keywordResults = await this.keywordSearch(query, filters, Math.min(topK * 2, 20));
+      console.log(`🔤 Keyword search returned ${keywordResults.length} results`);
+
+      // Step 3: Hybrid fusion (RRF - Reciprocal Rank Fusion)
+      const hybridResults = this.fuseResults(vectorResults, keywordResults, this.config.hybridAlpha);
+      console.log(`🔗 Hybrid fusion created ${hybridResults.length} combined results`);
+
+      // Step 4: Apply MMR for diversity
+      const diverseResults = this.applyMMR(hybridResults, topK, this.config.mmrLambda);
+      console.log(`✨ MMR selected ${diverseResults.length} diverse results`);
+
+      return diverseResults;
+
+    } catch (error) {
+      console.error('❌ Document retrieval failed:', error);
+      throw new Error(`Failed to retrieve documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Vector similarity search using Claude embeddings
+   */
+  private async vectorSearch(
+    query: string,
+    filters: RetrievalFilters,
+    topK: number
+  ): Promise<RetrievalResult[]> {
+    // Generate query embedding
+    const queryEmbedding = await this.generateEmbedding(query);
+
+    // Build ChromaDB where clause from filters
+    const whereClause = this.buildWhereClause(filters);
+
+    // Query ChromaDB
+    const collection = await this.chromaClient.getCollection({
+      name: this.config.documentsCollection
+    });
+
+    const results = await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults: topK,
+      ...(whereClause && { where: whereClause }),
+      include: ['documents', 'metadatas', 'distances']
+    });
+
+    // Convert to RetrievalResult format
+    const retrievalResults: RetrievalResult[] = [];
+    
+    if (results.documents && results.documents[0] && results.metadatas && results.metadatas[0] && results.distances && results.distances[0]) {
+      for (let i = 0; i < results.documents[0].length; i++) {
+        const document = results.documents[0][i];
+        const metadata = results.metadatas[0][i];
+        const distance = results.distances[0][i];
+
+        if (document && metadata && distance !== undefined && distance !== null) {
+          // Convert distance to similarity score (1 - normalized distance)
+          const similarity = Math.max(0, 1 - distance);
+          
+          retrievalResults.push({
+            content: document,
+            metadata: metadata as Record<string, any>,
+            score: similarity,
+            source: 'vector'
+          });
+        }
+      }
+    }
+
+    return retrievalResults;
+  }
+
+  /**
+   * BM25 keyword search implementation
+   * 
+   * Simple BM25-like scoring based on term frequency and document frequency.
+   * For production, consider using a dedicated search engine like Elasticsearch.
+   */
+  private async keywordSearch(
+    query: string,
+    filters: RetrievalFilters,
+    topK: number
+  ): Promise<RetrievalResult[]> {
+    // Get all documents from collection
+    const collection = await this.chromaClient.getCollection({
+      name: this.config.documentsCollection
+    });
+
+    const whereClause = this.buildWhereClause(filters);
+
+    // Retrieve all documents (or a large subset)
+    const allResults = await collection.get({
+      ...(whereClause && { where: whereClause }),
+      include: ['documents', 'metadatas']
+    });
+
+    if (!allResults.documents || !allResults.metadatas) {
+      return [];
+    }
+
+    // Tokenize query
+    const queryTerms = this.tokenizeForBM25(query.toLowerCase());
+    
+    // Score documents using BM25-like algorithm
+    const scoredResults: RetrievalResult[] = [];
+    const totalDocs = allResults.documents.length;
+
+    for (let i = 0; i < allResults.documents.length; i++) {
+      const document = allResults.documents[i];
+      const metadata = allResults.metadatas[i];
+
+      if (!document || !metadata) continue;
+
+      const docTerms = this.tokenizeForBM25(document.toLowerCase());
+      const score = this.calculateBM25Score(queryTerms, docTerms, totalDocs);
+
+      if (score > 0) {
+        scoredResults.push({
+          content: document,
+          metadata: metadata as Record<string, any>,
+          score,
+          source: 'keyword'
+        });
+      }
+    }
+
+    // Sort by score and return top K
+    return scoredResults
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK);
+  }
+
+  /**
+   * Tokenize text for BM25 scoring
+   */
+  private tokenizeForBM25(text: string): string[] {
+    return text
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ') // Replace punctuation with spaces
+      .split(/\s+/)
+      .filter(term => term.length > 2); // Filter out very short terms
+  }
+
+  /**
+   * Calculate BM25-like score for a document
+   */
+  private calculateBM25Score(queryTerms: string[], docTerms: string[], totalDocs: number): number {
+    const k1 = 1.2; // Term frequency saturation parameter
+    const b = 0.75; // Length normalization parameter
+    const avgDocLength = 100; // Approximate average document length
+
+    let score = 0;
+    const docLength = docTerms.length;
+    const termFreqs = new Map<string, number>();
+
+    // Calculate term frequencies in document
+    for (const term of docTerms) {
+      termFreqs.set(term, (termFreqs.get(term) || 0) + 1);
+    }
+
+    // Calculate score for each query term
+    for (const queryTerm of queryTerms) {
+      const tf = termFreqs.get(queryTerm) || 0;
+      
+      if (tf > 0) {
+        // Simplified BM25 formula (without IDF calculation for now)
+        const normalizedTF = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (docLength / avgDocLength)));
+        score += normalizedTF;
+      }
+    }
+
+    return score / queryTerms.length; // Normalize by query length
+  }
+
+  /**
+   * Fuse vector and keyword search results using weighted combination
+   */
+  private fuseResults(
+    vectorResults: RetrievalResult[],
+    keywordResults: RetrievalResult[],
+    alpha: number // Weight for vector results (1-alpha for keyword)
+  ): RetrievalResult[] {
+    const resultMap = new Map<string, RetrievalResult>();
+
+    // Add vector results
+    for (const result of vectorResults) {
+      const key = this.getResultKey(result);
+      resultMap.set(key, {
+        ...result,
+        score: result.score * alpha,
+        source: 'hybrid'
+      });
+    }
+
+    // Add/merge keyword results
+    for (const result of keywordResults) {
+      const key = this.getResultKey(result);
+      const existing = resultMap.get(key);
+      
+      if (existing) {
+        // Combine scores
+        existing.score += result.score * (1 - alpha);
+      } else {
+        // Add new result
+        resultMap.set(key, {
+          ...result,
+          score: result.score * (1 - alpha),
+          source: 'hybrid'
+        });
+      }
+    }
+
+    // Convert back to array and sort by combined score
+    return Array.from(resultMap.values())
+      .sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Generate a unique key for a retrieval result
+   */
+  private getResultKey(result: RetrievalResult): string {
+    return result.metadata.chunkId || result.content.substring(0, 100);
+  }
+
+  /**
+   * Apply Maximal Marginal Relevance (MMR) for result diversification
+   */
+  private applyMMR(
+    results: RetrievalResult[],
+    topK: number,
+    lambda: number // Balance between relevance (lambda) and diversity (1-lambda)
+  ): RetrievalResult[] {
+    if (results.length <= topK) {
+      return results;
+    }
+
+    const selected: RetrievalResult[] = [];
+    const remaining = [...results];
+
+    // Select the highest scoring result first
+    if (remaining.length > 0) {
+      const first = remaining.shift()!;
+      selected.push(first);
+    }
+
+    // Select remaining results using MMR
+    while (selected.length < topK && remaining.length > 0) {
+      let bestIndex = 0;
+      let bestScore = -Infinity;
+
+      for (let i = 0; i < remaining.length; i++) {
+        const candidate = remaining[i];
+        if (!candidate) continue;
+        
+        // Calculate relevance score
+        const relevanceScore = candidate.score;
+        
+        // Calculate maximum similarity to already selected results
+        let maxSimilarity = 0;
+        for (const selectedResult of selected) {
+          const similarity = this.calculateContentSimilarity(candidate.content, selectedResult.content);
+          maxSimilarity = Math.max(maxSimilarity, similarity);
+        }
+
+        // MMR score: λ * relevance - (1-λ) * max_similarity
+        const mmrScore = lambda * relevanceScore - (1 - lambda) * maxSimilarity;
+
+        if (mmrScore > bestScore) {
+          bestScore = mmrScore;
+          bestIndex = i;
+        }
+      }
+
+      // Add the best candidate to selected results
+      const bestCandidate = remaining.splice(bestIndex, 1)[0];
+      if (bestCandidate) {
+        selected.push(bestCandidate);
+      }
+    }
+
+    return selected;
+  }
+
+  /**
+   * Calculate content similarity between two texts (simple Jaccard similarity)
+   */
+  private calculateContentSimilarity(text1: string, text2: string): number {
+    const tokens1 = new Set(this.tokenizeForBM25(text1));
+    const tokens2 = new Set(this.tokenizeForBM25(text2));
+    
+    const intersection = new Set([...tokens1].filter(x => tokens2.has(x)));
+    const union = new Set([...tokens1, ...tokens2]);
+    
+    return union.size > 0 ? intersection.size / union.size : 0;
+  }
+
+  /**
+   * Build ChromaDB where clause from filters
+   * ChromaDB requires AND conditions to be structured differently
+   */
+  private buildWhereClause(filters: RetrievalFilters): Record<string, any> | undefined {
+    const conditions: Record<string, any>[] = [];
+
+    if (filters.source && filters.source.length > 0) {
+      conditions.push({ source: { $in: filters.source } });
+    }
+
+    if (filters.category && filters.category.length > 0) {
+      conditions.push({ category: { $in: filters.category } });
+    }
+
+    if (filters.hasTable !== undefined) {
+      conditions.push({ hasTable: filters.hasTable });
+    }
+
+    if (filters.hasFormula !== undefined) {
+      conditions.push({ hasFormula: filters.hasFormula });
+    }
+
+    if (filters.section && filters.section.length > 0) {
+      conditions.push({ section: { $in: filters.section } });
+    }
+
+    // Date range filtering (if documents have date metadata)
+    if (filters.dateRange) {
+      if (filters.dateRange.start) {
+        conditions.push({ date: { $gte: filters.dateRange.start } });
+      }
+      if (filters.dateRange.end) {
+        conditions.push({ date: { $lte: filters.dateRange.end } });
+      }
+    }
+
+    // Return appropriate structure based on number of conditions
+    if (conditions.length === 0) {
+      return undefined;
+    } else if (conditions.length === 1) {
+      return conditions[0];
+    } else {
+      return { $and: conditions };
+    }
+  }
+
+  /**
    * Query the RAG system for financial advice
-   * This is a basic implementation - we'll enhance it in later steps
+   * Now enhanced with advanced retrieval
    */
   public async queryFinancialAdvice(
     query: string,
     user: User,
     accounts: Account[] = [],
-    positions: Position[] = []
+    positions: Position[] = [],
+    filters: RetrievalFilters = {}
   ): Promise<string> {
     await this.initialize();
 
     try {
       console.log(`💬 Processing query: "${query}"`);
 
-      // Step 1: Generate query embedding (placeholder for now)
-      const queryEmbedding = await this.generateEmbedding(query);
-
-      // Step 2: Retrieve relevant documents (placeholder for now)
-      console.log('🔍 Retrieving relevant documents...');
-      // TODO: Implement document retrieval in Step 7
-
-      // Step 3: Assemble user context
+      // Step 1: Retrieve relevant documents using advanced hybrid search
+      console.log('🔍 Retrieving relevant documents with hybrid search...');
+      const retrievedDocs = await this.retrieveDocuments(query, filters, this.config.topK);
+      
+      // Step 2: Assemble user context
       const userContext = this.assembleUserContext(user, accounts, positions);
 
-      // Step 4: Generate response using Claude Sonnet
-      console.log('🤖 Generating response with Claude Sonnet...');
+      // Step 3: Assemble retrieved context
+      const retrievedContext = this.assembleRetrievedContext(retrievedDocs);
+
+      // Step 4: Generate response using Claude with retrieved context
+      console.log('🤖 Generating response with Claude using retrieved context...');
       const response = await this.anthropic.messages.create({
         model: this.config.responseModel,
         max_tokens: this.config.maxTokens,
@@ -702,14 +1094,25 @@ Text: ${text.substring(0, 1000)}`
         messages: [
           {
             role: 'user',
-            content: `You are a knowledgeable financial advisor. Please provide advice based on the user's profile and question.
+            content: `You are a knowledgeable financial advisor. Provide advice based on the user's profile, question, and the retrieved financial knowledge.
 
-USER PROFILE:
+📑 USER PROFILE:
 ${userContext}
 
-USER QUESTION: ${query}
+📂 RELEVANT FINANCIAL KNOWLEDGE:
+${retrievedContext}
 
-Please provide helpful, accurate financial advice. If you need more specific information to give better advice, mention what additional details would be helpful.`
+🎯 USER QUESTION: ${query}
+
+📋 INSTRUCTIONS:
+- Base your answer primarily on the provided financial knowledge
+- If the knowledge doesn't contain relevant information, clearly state this
+- Provide specific, actionable advice when possible
+- Include relevant figures, limits, or examples from the knowledge base
+- Cite sources when referencing specific information
+- Use clear, structured formatting with bullet points when helpful
+
+Please provide helpful, accurate financial advice:`
           }
         ]
       });
@@ -726,6 +1129,32 @@ Please provide helpful, accurate financial advice. If you need more specific inf
       console.error('❌ RAG query failed:', error);
       throw new Error('Failed to process your financial question. Please try again.');
     }
+  }
+
+  /**
+   * Assemble retrieved documents into context for the LLM
+   */
+  private assembleRetrievedContext(retrievedDocs: RetrievalResult[]): string {
+    if (retrievedDocs.length === 0) {
+      return 'No relevant financial documents found in the knowledge base.';
+    }
+
+    const contextParts: string[] = [];
+
+    retrievedDocs.forEach((doc, index) => {
+      const source = doc.metadata.documentId || 'Unknown';
+      const section = doc.metadata.section ? ` - ${doc.metadata.section}` : '';
+      const subsection = doc.metadata.subsection ? ` > ${doc.metadata.subsection}` : '';
+      const score = (doc.score * 100).toFixed(1);
+
+      contextParts.push(`
+📄 Document ${index + 1} (Score: ${score}%, Source: ${doc.source})
+Source: ${source}${section}${subsection}
+Content: ${doc.content.trim()}
+`);
+    });
+
+    return contextParts.join('\n---\n');
   }
 
   /**
