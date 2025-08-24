@@ -34,7 +34,7 @@ export class PositionService {
     const persisted = await ChromaDbService.addPosition(newPosition);
 
     if (process.env.NODE_ENV !== 'test') {
-      console.log(`✅ Created position: ${persisted.ticker} (${persisted.asset_type}) - ${persisted.quantity} units @ $${persisted.value.toLocaleString()} total`);
+      console.log(`✅ Created position: ${persisted.ticker} (${persisted.asset_type}) - ${persisted.quantity} units, total value: $${persisted.value.toLocaleString()}`);
     }
     
     return persisted;
@@ -140,14 +140,17 @@ export class PositionService {
 
   /**
    * Get total portfolio value for a user
+   * Note: position.value represents the total position value (not per-unit price)
    */
   static async getTotalPortfolioValue(userId: string): Promise<number> {
     const positions = await this.getPositionsByUserId(userId);
+    // Sum total position values (value field already represents total, not per-unit)
     return positions.reduce((total, position) => total + position.value, 0);
   }
 
   /**
    * Get portfolio summary by asset type for a user
+   * Note: position.value represents the total position value (not per-unit price)
    */
   static async getPortfolioSummary(userId: string): Promise<Record<string, { count: number; value: number }>> {
     const positions = await this.getPositionsByUserId(userId);
@@ -158,6 +161,7 @@ export class PositionService {
         summary[position.asset_type] = { count: 0, value: 0 };
       }
       summary[position.asset_type]!.count++;
+      // Add total position value (value field already represents total, not per-unit)
       summary[position.asset_type]!.value += position.value;
     }
 

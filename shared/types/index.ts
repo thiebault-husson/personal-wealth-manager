@@ -27,8 +27,8 @@ export interface Position {
   account_id: string;
   ticker: string;
   asset_type: 'stock' | 'bond' | 'etf' | 'mutual_fund' | 'cash' | 'muni_bond' | 'other';
-  quantity: number;
-  value: number;
+  quantity: number; // Number of shares/units held
+  value: number; // Total position value in USD (not per-unit price)
 }
 
 export interface RAGSource {
