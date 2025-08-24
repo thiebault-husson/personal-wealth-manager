@@ -1,0 +1,231 @@
+import React, { useState, useRef, useEffect } from 'react';
+import type { Account, Position } from '@shared/types';
+import { positionAPI } from '../services/api';
+
+interface PositionFormProps {
+  accounts: Account[];
+  onPositionAdded: (position: Position) => void;
+  positions: Position[];
+  onNext: () => void;
+  onSkip: () => void;
+  isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
+  setError: (error: string | null) => void;
+}
+
+const PositionForm: React.FC<PositionFormProps> = ({
+  accounts,
+  onPositionAdded,
+  positions,
+  onNext,
+  onSkip,
+  isLoading,
+  setIsLoading,
+  setError
+}) => {
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const [formData, setFormData] = useState({
+    account_id: accounts[0]?.id || '',
+    ticker: '',
+    asset_type: 'stock' as Position['asset_type'],
+    quantity: 0,
+    value: 0
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const position = await positionAPI.create(formData);
+      
+      // Check if component is still mounted before updating state
+      if (!mountedRef.current) return;
+      
+      onPositionAdded(position);
+      
+      // Reset form
+      setFormData({
+        account_id: accounts[0]?.id || '',
+        ticker: '',
+        asset_type: 'stock' as Position['asset_type'],
+        quantity: 0,
+        value: 0
+      });
+    } catch (error) {
+      // Check if component is still mounted before updating state
+      if (mountedRef.current) {
+        setError(error instanceof Error ? error.message : 'Failed to create position');
+      }
+    } finally {
+      // Check if component is still mounted before updating state
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
+    }
+  };
+
+  if (accounts.length === 0) {
+    return (
+      <div className="form-container">
+        <h2>📈 Position Management</h2>
+        <div className="empty-state">
+          <p>You need to add at least one account before adding positions.</p>
+          <button onClick={onSkip} className="btn-primary">
+            Go Back to Accounts
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const getAccountName = (accountId: string) => {
+    const account = accounts.find(a => a.id === accountId);
+    return account ? account.name : 'Unknown Account';
+  };
+
+  return (
+    <div className="form-container">
+      <h2>📈 Position Management</h2>
+      <p>Add your investment positions and holdings</p>
+
+      {positions.length > 0 && (
+        <div className="positions-list">
+          <h3>Your Positions ({positions.length})</h3>
+          {positions.map((position) => (
+            <div key={position.id} className="position-item">
+              <div className="position-info">
+                <strong>{position.ticker}</strong>
+                <span className="position-type">{position.asset_type}</span>
+                <span className="position-account">{getAccountName(position.account_id)}</span>
+              </div>
+              <div className="position-details">
+                <div>{position.quantity} shares</div>
+                <div className="position-value">${position.value.toLocaleString()}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="account_id">Account *</label>
+          <select
+            id="account_id"
+            value={formData.account_id}
+            onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
+            required
+            disabled={isLoading}
+          >
+            {accounts.map((account) => (
+              <option key={account.id} value={account.id}>
+                {account.name} ({account.type})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="ticker">Ticker Symbol *</label>
+            <input
+              type="text"
+              id="ticker"
+              value={formData.ticker}
+              onChange={(e) => setFormData({ ...formData, ticker: e.target.value.toUpperCase() })}
+              placeholder="e.g., AAPL, TSLA, VTSAX"
+              maxLength={10}
+              required
+              disabled={isLoading}
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="asset_type">Asset Type *</label>
+            <select
+              id="asset_type"
+              value={formData.asset_type}
+              onChange={(e) => setFormData({ ...formData, asset_type: e.target.value as Position['asset_type'] })}
+              required
+              disabled={isLoading}
+            >
+              <option value="stock">Stock</option>
+              <option value="etf">ETF</option>
+              <option value="mutual_fund">Mutual Fund</option>
+              <option value="bond">Bond</option>
+              <option value="muni_bond">Municipal Bond</option>
+              <option value="cash">Cash</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-group">
+            <label htmlFor="quantity">Quantity/Shares *</label>
+            <input
+              type="number"
+              id="quantity"
+              min="0.001"
+              step="0.001"
+              value={formData.quantity}
+              onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })}
+              placeholder="0"
+              required
+              disabled={isLoading}
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="value">Total Value (USD) *</label>
+            <input
+              type="number"
+              id="value"
+              min="1"
+              step="1"
+              value={formData.value}
+              onChange={(e) => setFormData({ ...formData, value: parseFloat(e.target.value) || 0 })}
+              placeholder="0.00"
+              required
+              disabled={isLoading}
+            />
+          </div>
+        </div>
+
+        <button type="submit" disabled={isLoading} className="btn-secondary">
+          {isLoading ? 'Adding Position...' : 'Add Position'}
+        </button>
+      </form>
+
+      <div className="form-actions">
+        <button 
+          type="button" 
+          onClick={onSkip} 
+          className="btn-link"
+          disabled={isLoading}
+        >
+          Skip for now
+        </button>
+        
+        <button 
+          type="button" 
+          onClick={onNext} 
+          className="btn-primary"
+          disabled={isLoading}
+        >
+          Continue to Dashboard →
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default PositionForm;
