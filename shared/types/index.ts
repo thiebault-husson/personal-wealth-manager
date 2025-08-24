@@ -16,7 +16,8 @@ export interface User {
 export interface Account {
   id: string;
   user_id: string;
-  account_type: '401k' | 'ira' | 'roth_ira' | 'brokerage' | 'hsa' | '529' | 'cash' | 'other';
+  name: string;
+  type: '401k' | '403b' | 'ira_traditional' | 'ira_roth' | 'brokerage' | 'savings' | 'checking' | 'hsa' | 'other';
   provider: string;
   balance: number;
   currency: 'USD';
@@ -64,7 +65,8 @@ export interface CreateUserRequest {
 
 export interface CreateAccountRequest {
   user_id: string;
-  account_type: Account['account_type'];
+  name: string;
+  type: Account['type'];
   provider: string;
   balance: number;
 }

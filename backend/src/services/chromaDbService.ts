@@ -209,7 +209,7 @@ export class ChromaDbService {
         metadatas: [{
           account_id: account.id,
           user_id: account.user_id,
-          account_type: account.account_type,
+          type: account.type,
           created_at: new Date().toISOString()
         }]
       });
@@ -300,7 +300,7 @@ export class ChromaDbService {
         metadatas: [{
           account_id: account.id,
           user_id: account.user_id,
-          account_type: account.account_type,
+          type: account.type,
           updated_at: new Date().toISOString()
         }]
       });
