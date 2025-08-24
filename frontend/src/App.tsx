@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
-import type { User, Account, Position } from '@shared/types';
+import type { User, Account, Position, Insurance } from '@shared/types';
 import { userAPI, healthAPI } from './services/api';
 import UserProfileForm from './components/UserProfileForm';
 import AccountForm from './components/AccountForm';
+import InsuranceForm from './components/InsuranceForm';
 import PositionForm from './components/PositionForm';
 import Dashboard from './components/Dashboard';
 import AIQuery from './components/AIQuery';
 import './App.css';
 
-type AppStep = 'profile' | 'accounts' | 'positions' | 'dashboard';
+type AppStep = 'profile' | 'accounts' | 'insurance' | 'holdings' | 'dashboard';
 
 function App() {
   const [currentStep, setCurrentStep] = useState<AppStep>('profile');
   const [user, setUser] = useState<User | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [insurance, setInsurance] = useState<Insurance[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +45,10 @@ function App() {
     setAccounts(prev => [...prev, newAccount]);
   };
 
+  const handleInsuranceAdded = (newInsurance: Insurance) => {
+    setInsurance(prev => [...prev, newInsurance]);
+  };
+
   const handlePositionAdded = (newPosition: Position) => {
     setPositions(prev => [...prev, newPosition]);
   };
@@ -54,13 +60,14 @@ function App() {
   const resetApp = () => {
     setUser(null);
     setAccounts([]);
+    setInsurance([]);
     setPositions([]);
     setCurrentStep('profile');
     setError(null);
   };
 
   if (!apiHealth) {
-    return (
+  return (
       <div className="app">
         <div className="container">
           <div className="error-state">
@@ -106,19 +113,27 @@ function App() {
                 <span className="step-text">Accounts</span>
               </button>
               <button 
-                className={`progress-step ${currentStep === 'positions' ? 'active' : ''} ${positions.length > 0 ? 'completed' : ''}`}
-                onClick={() => goToStep('positions')}
-                disabled={accounts.length === 0}
+                className={`progress-step ${currentStep === 'insurance' ? 'active' : ''} ${insurance.length > 0 ? 'completed' : ''}`}
+                onClick={() => goToStep('insurance')}
+                disabled={!user}
               >
                 <span className="step-number">3</span>
-                <span className="step-text">Positions</span>
+                <span className="step-text">Insurance</span>
+              </button>
+              <button 
+                className={`progress-step ${currentStep === 'holdings' ? 'active' : ''} ${positions.length > 0 ? 'completed' : ''}`}
+                onClick={() => goToStep('holdings')}
+                disabled={!user}
+              >
+                <span className="step-number">4</span>
+                <span className="step-text">Stock Holdings</span>
               </button>
               <button 
                 className={`progress-step ${currentStep === 'dashboard' ? 'active' : ''}`}
                 onClick={() => goToStep('dashboard')}
                 disabled={!user}
               >
-                <span className="step-number">4</span>
+                <span className="step-number">5</span>
                 <span className="step-text">Dashboard</span>
               </button>
             </div>
@@ -153,8 +168,8 @@ function App() {
                   user={user}
                   onAccountAdded={handleAccountAdded}
                   accounts={accounts}
-                  onNext={() => goToStep('positions')}
-                  onSkip={() => goToStep('dashboard')}
+                  onNext={() => goToStep('insurance')}
+                  onSkip={() => goToStep('insurance')}
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
                   setError={setError}
@@ -162,7 +177,22 @@ function App() {
               </div>
             )}
 
-            {currentStep === 'positions' && (
+            {currentStep === 'insurance' && user && (
+              <div className="step-container fade-in">
+                <InsuranceForm
+                  user={user}
+                  onInsuranceAdded={handleInsuranceAdded}
+                  insurance={insurance}
+                  onNext={() => goToStep('holdings')}
+                  onSkip={() => goToStep('holdings')}
+                  isLoading={isLoading}
+                  setIsLoading={setIsLoading}
+                  setError={setError}
+                />
+              </div>
+            )}
+
+            {currentStep === 'holdings' && (
               <div className="step-container fade-in">
                 <PositionForm
                   accounts={accounts}
@@ -201,7 +231,7 @@ function App() {
                 <span>👤 {user.full_name}</span>
                 <button onClick={resetApp} className="reset-btn">
                   Start Over
-                </button>
+        </button>
               </div>
             )}
             <p>© 2024 Personal Wealth Manager MVP</p>

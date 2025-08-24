@@ -35,6 +35,16 @@ export const createUserSchema = z.object({
     .min(0, "Dependents cannot be negative")
     .max(20, "Number of dependents seems unrealistic"),
   
+  annual_income: z.number()
+    .min(0, "Annual income cannot be negative")
+    .max(10000000, "Annual income seems unrealistic")
+    .describe("Annual gross income before taxes"),
+  
+  annual_bonus: z.number()
+    .min(0, "Annual bonus cannot be negative")
+    .max(5000000, "Annual bonus seems unrealistic")
+    .describe("Expected annual bonus or variable compensation"),
+  
   risk_tolerance: z.enum(['low', 'medium', 'high'])
     .describe("Risk tolerance must be: low, medium, or high"),
   

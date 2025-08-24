@@ -23,6 +23,8 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({
     residency_city: '',
     age: 25,
     dependents: 0,
+    annual_income: 0,
+    annual_bonus: 0,
     risk_tolerance: 'medium' as const,
     goals: ['', '', ''] as [string, string, string]
   });
@@ -56,6 +58,14 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({
 
     if (formData.dependents < 0 || formData.dependents > 20) {
       errors.dependents = 'Number of dependents must be between 0 and 20';
+    }
+
+    if (formData.annual_income < 0 || formData.annual_income > 10000000) {
+      errors.annual_income = 'Annual income must be between $0 and $10,000,000';
+    }
+
+    if (formData.annual_bonus < 0 || formData.annual_bonus > 5000000) {
+      errors.annual_bonus = 'Annual bonus must be between $0 and $5,000,000';
     }
 
     const filledGoals = formData.goals.filter(goal => goal.trim());
@@ -256,6 +266,54 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({
           <h3 className="text-lg font-semibold text-gray-900 mb-6">Financial Profile</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="form-group">
+              <label htmlFor="annual_income" className="form-label">
+                Annual Income *
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  id="annual_income"
+                  type="number"
+                  min="0"
+                  step="1000"
+                  className={`form-input pl-8 ${formErrors.annual_income ? 'error' : ''}`}
+                  value={formData.annual_income}
+                  onChange={(e) => handleInputChange('annual_income', parseInt(e.target.value) || 0)}
+                  placeholder="75000"
+                  disabled={isLoading}
+                />
+              </div>
+              {formErrors.annual_income && (
+                <div className="form-error">{formErrors.annual_income}</div>
+              )}
+              <div className="form-help">Your gross annual salary before taxes</div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="annual_bonus" className="form-label">
+                Annual Bonus (Optional)
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                <input
+                  id="annual_bonus"
+                  type="number"
+                  min="0"
+                  step="1000"
+                  className={`form-input pl-8 ${formErrors.annual_bonus ? 'error' : ''}`}
+                  value={formData.annual_bonus}
+                  onChange={(e) => handleInputChange('annual_bonus', parseInt(e.target.value) || 0)}
+                  placeholder="10000"
+                  disabled={isLoading}
+                />
+              </div>
+              {formErrors.annual_bonus && (
+                <div className="form-error">{formErrors.annual_bonus}</div>
+              )}
+              <div className="form-help">Expected annual bonus or variable compensation</div>
+            </div>
+
             <div className="form-group">
               <label htmlFor="filing_status" className="form-label">
                 Tax Filing Status
