@@ -49,6 +49,17 @@ interface RetrievalFilters {
 }
 
 /**
+ * Query expansion result interface
+ */
+interface ExpandedQuery {
+  original: string;
+  expanded: string;
+  expansionTerms: string[];
+  userContextTerms: string[];
+  prioritySections: string[];
+}
+
+/**
  * RAG Service for Personal Wealth Manager
  * 
  * Implements retrieval-augmented generation for financial advice using:
@@ -697,6 +708,240 @@ Text: ${text.substring(0, 1000)}`
   }
 
   /**
+   * Expand user query with financial context and synonyms
+   * 
+   * Enhances queries by:
+   * - Expanding financial abbreviations (IRA → Individual Retirement Account)
+   * - Adding synonyms and related terms
+   * - Integrating user profile context (age, filing status, goals)
+   * - Identifying priority sections for boosting
+   */
+  public async expandQuery(query: string, user?: User, accounts?: Account[], positions?: Position[]): Promise<ExpandedQuery> {
+    try {
+      console.log(`🔍 Expanding query: "${query}"`);
+
+      // Step 1: Use Claude to intelligently expand the query
+      const response = await this.anthropic.messages.create({
+        model: this.config.embeddingModel,
+        max_tokens: 400,
+        temperature: 0.1, // Low for consistent expansions
+        messages: [
+          {
+            role: 'user',
+            content: `You are a financial query expansion expert. Expand this financial query to improve document retrieval.
+
+ORIGINAL QUERY: "${query}"
+
+USER CONTEXT: ${user ? this.assembleUserContext(user, accounts || [], positions || []) : 'No user context provided'}
+
+EXPANSION RULES:
+1. Expand abbreviations (IRA → Individual Retirement Account, 401k → 401(k) plan)
+2. Add synonyms (deduction → tax write-off, contribution → deposit)
+3. Add user-specific terms based on context (age, filing status, goals)
+4. Include related financial concepts
+5. Identify priority document sections that would be most relevant
+
+OUTPUT FORMAT:
+EXPANDED_QUERY: [expanded query with all terms]
+EXPANSION_TERMS: [comma-separated list of added terms]
+USER_CONTEXT_TERMS: [comma-separated user-specific terms added]
+PRIORITY_SECTIONS: [comma-separated relevant section names]
+
+Example:
+EXPANDED_QUERY: IRA Individual Retirement Account contribution limits 2024 single filer under 50 retirement planning
+EXPANSION_TERMS: Individual Retirement Account, limits, 2024, single filer, under 50
+USER_CONTEXT_TERMS: single filer, under 50, retirement planning
+PRIORITY_SECTIONS: IRA Contribution Limits, Retirement Planning, Tax Deductions`
+          }
+        ]
+      });
+
+      const firstContent = response.content[0];
+      if (!firstContent || firstContent.type !== 'text') {
+        console.warn('Invalid expansion response, using original query');
+        return this.createFallbackExpansion(query, user);
+      }
+
+      // Parse Claude's response
+      const expansionText = firstContent.text;
+      const expandedQuery = this.extractField(expansionText, 'EXPANDED_QUERY') || query;
+      const expansionTerms = this.extractField(expansionText, 'EXPANSION_TERMS')?.split(',').map(t => t.trim()).filter(t => t.length > 0) || [];
+      const userContextTerms = this.extractField(expansionText, 'USER_CONTEXT_TERMS')?.split(',').map(t => t.trim()).filter(t => t.length > 0) || [];
+      const prioritySections = this.extractField(expansionText, 'PRIORITY_SECTIONS')?.split(',').map(t => t.trim()).filter(t => t.length > 0) || [];
+
+      // If Claude expansion fails, use fallback
+      if (expandedQuery === query && expansionTerms.length === 0 && userContextTerms.length === 0) {
+        console.log('🔄 Claude expansion returned minimal results, using fallback');
+        return this.createFallbackExpansion(query, user);
+      }
+
+      console.log(`✅ Query expanded: "${expandedQuery}"`);
+      console.log(`📝 Added ${expansionTerms.length} expansion terms, ${userContextTerms.length} user context terms`);
+
+      return {
+        original: query,
+        expanded: expandedQuery,
+        expansionTerms,
+        userContextTerms,
+        prioritySections
+      };
+
+    } catch (error) {
+      console.error('❌ Query expansion failed:', error);
+      return this.createFallbackExpansion(query, user);
+    }
+  }
+
+  /**
+   * Extract field from Claude's structured response
+   */
+  private extractField(text: string, fieldName: string): string | undefined {
+    const regex = new RegExp(`${fieldName}:\\s*(.+?)(?=\\n[A-Z_]+:|$)`, 'i');
+    const match = text.match(regex);
+    return match?.[1]?.trim();
+  }
+
+  /**
+   * Create fallback expansion when Claude expansion fails
+   */
+  private createFallbackExpansion(query: string, user?: User): ExpandedQuery {
+    console.log('🔄 Using fallback query expansion');
+    
+    let expanded = query;
+    const expansionTerms: string[] = [];
+    const userContextTerms: string[] = [];
+    const prioritySections: string[] = [];
+
+    // Basic abbreviation expansion
+    const abbreviations: Record<string, string> = {
+      'IRA': 'Individual Retirement Account IRA',
+      '401k': '401(k) plan 401k',
+      '401(k)': '401(k) plan',
+      'HSA': 'Health Savings Account HSA',
+      'FSA': 'Flexible Spending Account FSA',
+      'ROTH': 'Roth IRA Roth',
+      'SEP': 'SEP-IRA Simplified Employee Pension',
+      'SIMPLE': 'SIMPLE IRA',
+      'TSP': 'Thrift Savings Plan TSP',
+      'AGI': 'Adjusted Gross Income AGI',
+      'MAGI': 'Modified Adjusted Gross Income MAGI'
+    };
+
+    // Apply abbreviation expansions
+    for (const [abbr, expansion] of Object.entries(abbreviations)) {
+      if (query.toLowerCase().includes(abbr.toLowerCase())) {
+        expanded = expanded.replace(new RegExp(abbr, 'gi'), expansion);
+        expansionTerms.push(expansion);
+      }
+    }
+
+    // Add user context terms
+    if (user) {
+      if (user.age < 50) {
+        userContextTerms.push('under 50', 'no catch-up contributions');
+      } else {
+        userContextTerms.push('age 50 or over', 'catch-up contributions');
+      }
+
+      userContextTerms.push(user.filing_status);
+      userContextTerms.push(user.residency_state);
+      
+      if (user.goals.includes('retirement')) {
+        prioritySections.push('Retirement Planning', 'Contribution Limits');
+      }
+      if (user.goals.includes('tax_optimization')) {
+        prioritySections.push('Tax Deductions', 'Tax Credits');
+      }
+    }
+
+    // Add user context to expanded query
+    if (userContextTerms.length > 0) {
+      expanded += ' ' + userContextTerms.join(' ');
+    }
+
+    return {
+      original: query,
+      expanded,
+      expansionTerms,
+      userContextTerms,
+      prioritySections
+    };
+  }
+
+  /**
+   * Apply section bias to boost results from priority sections
+   */
+  private applySectionBias(results: RetrievalResult[], prioritySections: string[]): RetrievalResult[] {
+    if (prioritySections.length === 0) {
+      return results;
+    }
+
+    const biasBoost = 0.2; // 20% score boost for priority sections
+
+    return results.map(result => {
+      const section = result.metadata.section;
+      const subsection = result.metadata.subsection;
+      
+      const matchesPriority = prioritySections.some(priority => 
+        section?.toLowerCase().includes(priority.toLowerCase()) ||
+        subsection?.toLowerCase().includes(priority.toLowerCase())
+      );
+
+      if (matchesPriority) {
+        return {
+          ...result,
+          score: Math.min(1.0, result.score + biasBoost) // Cap at 1.0
+        };
+      }
+
+      return result;
+    });
+  }
+
+  /**
+   * Enhanced document retrieval with query expansion
+   * 
+   * Now includes intelligent query expansion and user context integration.
+   */
+  public async retrieveDocumentsWithExpansion(
+    query: string,
+    user?: User,
+    accounts?: Account[],
+    positions?: Position[],
+    filters: RetrievalFilters = {},
+    topK: number = this.config.topK
+  ): Promise<{ results: RetrievalResult[]; expandedQuery: ExpandedQuery }> {
+    await this.initialize();
+
+    try {
+      console.log(`🔍 Enhanced retrieval for query: "${query}"`);
+
+      // Step 1: Expand the query with user context
+      const expandedQuery = await this.expandQuery(query, user, accounts, positions);
+
+      // Step 2: Retrieve documents using the expanded query
+      const results = await this.retrieveDocuments(expandedQuery.expanded, filters, topK);
+
+      // Step 3: Apply section bias based on priority sections
+      const biasedResults = this.applySectionBias(results, expandedQuery.prioritySections);
+
+      // Step 4: Re-sort by adjusted scores
+      const finalResults = biasedResults.sort((a, b) => b.score - a.score);
+
+      console.log(`✅ Enhanced retrieval completed: ${finalResults.length} results`);
+
+      return {
+        results: finalResults,
+        expandedQuery
+      };
+
+    } catch (error) {
+      console.error('❌ Enhanced document retrieval failed:', error);
+      throw new Error(`Failed to retrieve documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Advanced document retrieval using hybrid search with MMR
    * 
    * Combines vector similarity search with BM25 keyword matching,
@@ -1075,18 +1320,25 @@ Text: ${text.substring(0, 1000)}`
     try {
       console.log(`💬 Processing query: "${query}"`);
 
-      // Step 1: Retrieve relevant documents using advanced hybrid search
-      console.log('🔍 Retrieving relevant documents with hybrid search...');
-      const retrievedDocs = await this.retrieveDocuments(query, filters, this.config.topK);
+      // Step 1: Enhanced retrieval with query expansion and user context
+      console.log('🔍 Retrieving relevant documents with enhanced query expansion...');
+      const { results: retrievedDocs, expandedQuery } = await this.retrieveDocumentsWithExpansion(
+        query, 
+        user, 
+        accounts, 
+        positions, 
+        filters, 
+        this.config.topK
+      );
       
       // Step 2: Assemble user context
       const userContext = this.assembleUserContext(user, accounts, positions);
 
-      // Step 3: Assemble retrieved context
-      const retrievedContext = this.assembleRetrievedContext(retrievedDocs);
+      // Step 3: Assemble retrieved context with expansion details
+      const retrievedContext = this.assembleEnhancedRetrievedContext(retrievedDocs, expandedQuery);
 
-      // Step 4: Generate response using Claude with retrieved context
-      console.log('🤖 Generating response with Claude using retrieved context...');
+      // Step 4: Generate response using Claude with enhanced context
+      console.log('🤖 Generating response with Claude using enhanced context...');
       const response = await this.anthropic.messages.create({
         model: this.config.responseModel,
         max_tokens: this.config.maxTokens,
@@ -1094,25 +1346,32 @@ Text: ${text.substring(0, 1000)}`
         messages: [
           {
             role: 'user',
-            content: `You are a knowledgeable financial advisor. Provide advice based on the user's profile, question, and the retrieved financial knowledge.
+            content: `You are a knowledgeable financial advisor. Provide personalized advice based on the user's profile, question, and retrieved financial knowledge.
 
 📑 USER PROFILE:
 ${userContext}
+
+🔍 QUERY ANALYSIS:
+Original Query: "${expandedQuery.original}"
+Enhanced Query: "${expandedQuery.expanded}"
+Key Focus Areas: ${expandedQuery.prioritySections.join(', ') || 'General financial advice'}
 
 📂 RELEVANT FINANCIAL KNOWLEDGE:
 ${retrievedContext}
 
 🎯 USER QUESTION: ${query}
 
-📋 INSTRUCTIONS:
-- Base your answer primarily on the provided financial knowledge
-- If the knowledge doesn't contain relevant information, clearly state this
-- Provide specific, actionable advice when possible
-- Include relevant figures, limits, or examples from the knowledge base
-- Cite sources when referencing specific information
-- Use clear, structured formatting with bullet points when helpful
+📋 RESPONSE GUIDELINES:
+- Provide personalized advice based on the user's specific situation (age, filing status, goals)
+- Base your answer primarily on the retrieved financial knowledge
+- If the knowledge base lacks specific information, clearly state this limitation
+- Include specific figures, limits, deadlines, and examples from the knowledge base
+- Cite document sources when referencing specific information
+- Structure your response clearly with headers and bullet points
+- Prioritize actionable recommendations over general information
+- Consider the user's stated financial goals in your advice
 
-Please provide helpful, accurate financial advice:`
+Please provide comprehensive, personalized financial advice:`
           }
         ]
       });
@@ -1122,7 +1381,7 @@ Please provide helpful, accurate financial advice:`
         ? firstContent.text 
         : 'Unable to generate response';
 
-      console.log('✅ RAG query completed successfully');
+      console.log('✅ Enhanced RAG query completed successfully');
       return responseText;
 
     } catch (error) {
@@ -1149,6 +1408,50 @@ Please provide helpful, accurate financial advice:`
 
       contextParts.push(`
 📄 Document ${index + 1} (Score: ${score}%, Source: ${doc.source})
+Source: ${source}${section}${subsection}
+Content: ${doc.content.trim()}
+`);
+    });
+
+    return contextParts.join('\n---\n');
+  }
+
+  /**
+   * Assemble enhanced retrieved context with query expansion details
+   */
+  private assembleEnhancedRetrievedContext(retrievedDocs: RetrievalResult[], expandedQuery: ExpandedQuery): string {
+    if (retrievedDocs.length === 0) {
+      return 'No relevant financial documents found in the knowledge base.';
+    }
+
+    const contextParts: string[] = [];
+
+    // Add query expansion summary
+    if (expandedQuery.expansionTerms.length > 0 || expandedQuery.userContextTerms.length > 0) {
+      contextParts.push(`
+🔍 SEARCH ENHANCEMENT APPLIED:
+- Expansion Terms: ${expandedQuery.expansionTerms.join(', ') || 'None'}
+- User Context Terms: ${expandedQuery.userContextTerms.join(', ') || 'None'}
+- Priority Sections: ${expandedQuery.prioritySections.join(', ') || 'None'}
+`);
+    }
+
+    // Add retrieved documents
+    retrievedDocs.forEach((doc, index) => {
+      const source = doc.metadata.documentId || 'Unknown';
+      const section = doc.metadata.section ? ` - ${doc.metadata.section}` : '';
+      const subsection = doc.metadata.subsection ? ` > ${doc.metadata.subsection}` : '';
+      const score = (doc.score * 100).toFixed(1);
+      
+      // Highlight if this document matches priority sections
+      const isPriority = expandedQuery.prioritySections.some(priority => 
+        doc.metadata.section?.toLowerCase().includes(priority.toLowerCase()) ||
+        doc.metadata.subsection?.toLowerCase().includes(priority.toLowerCase())
+      );
+      const priorityIndicator = isPriority ? ' ⭐ PRIORITY MATCH' : '';
+
+      contextParts.push(`
+📄 Document ${index + 1} (Score: ${score}%, Source: ${doc.source}${priorityIndicator})
 Source: ${source}${section}${subsection}
 Content: ${doc.content.trim()}
 `);
