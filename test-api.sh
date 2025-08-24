@@ -82,9 +82,10 @@ test_api_info() {
 test_create_user() {
     log_info "Testing user creation..."
     
+    unique_ts=$(date +%s)
     user_data='{
         "full_name": "Test User",
-        "email": "test.user@example.com",
+        "email": "test.user'"$unique_ts"'@example.com",
         "filing_status": "single",
         "residency_state": "California",
         "residency_city": "San Francisco",
@@ -103,7 +104,11 @@ test_create_user() {
         -d "$user_data")
     
     if echo "$response" | grep -q '"success":true'; then
-        USER_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        if command -v jq >/dev/null 2>&1; then
+          USER_ID=$(echo "$response" | jq -r '.data.id // .id')
+        else
+          USER_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        fi
         log_success "User created successfully"
         log_info "User ID: $USER_ID"
     else
