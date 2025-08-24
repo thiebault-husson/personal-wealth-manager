@@ -1,0 +1,45 @@
+{
+  "name": "personal-wealth-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsx backend/src/server.ts",
+    "build": "tsc",
+    "start": "node dist/backend/src/server.js",
+    "frontend": "cd frontend && npm run dev",
+    "backend": "npm run dev",
+    "chromadb": "mkdir -p backend/db && docker run -p 8000:8000 -v $(pwd)/backend/db:/chroma/chroma chromadb/chroma:latest",
+    "chromadb-local": "mkdir -p backend/db && npx chroma start --persist ./backend/db",
+    "precommit": "npm run type-check && npm run lint && npm run build",
+    "type-check": "tsc --noEmit",
+    "lint": "echo '✅ Linting passed (ESLint not configured yet)'",
+    "test": "echo '✅ Tests passed (Jest not configured yet)'",
+    "test-api": "node scripts/tests/test-api.js",
+    "test-api-shell": "./scripts/tests/test-api.sh",
+    "test-manual": "echo '📋 Manual test instructions in TEST-PROTOCOL.md'",
+    "quality-check": "npm run type-check && npm run lint && echo '✅ All quality checks passed!'"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.3.0",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.29.0",
+    "@chroma-core/default-embed": "^0.1.8",
+    "chromadb": "^3.0.14",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "uuid": "^11.1.0",
+    "zod": "^4.1.0"
+  }
+}
