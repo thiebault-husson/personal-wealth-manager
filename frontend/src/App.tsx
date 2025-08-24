@@ -66,7 +66,7 @@ function App() {
           <div className="error-state">
             <h1>🔌 Connection Error</h1>
             <p>Unable to connect to the Personal Wealth Manager API.</p>
-            <p>Please make sure the backend server is running on port 3000.</p>
+            <p>Please make sure the backend server is running on port 3001.</p>
             <button className="btn btn-primary" onClick={() => window.location.reload()}>
               Retry Connection
             </button>
