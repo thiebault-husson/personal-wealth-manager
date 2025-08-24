@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, Account, Position } from '../../shared/types';
+import type { User, Account, Position } from '@shared/types';
 import { userAPI, healthAPI } from './services/api';
 import UserProfileForm from './components/UserProfileForm';
 import AccountForm from './components/AccountForm';
@@ -65,7 +65,7 @@ function App() {
         <div className="error-state">
           <h1>🔌 Connection Error</h1>
           <p>Unable to connect to the Personal Wealth Manager API.</p>
-          <p>Please make sure the backend server is running on port 3001.</p>
+          <p>Please make sure the backend server is running on port 3000.</p>
           <button onClick={() => window.location.reload()}>
             Retry Connection
           </button>

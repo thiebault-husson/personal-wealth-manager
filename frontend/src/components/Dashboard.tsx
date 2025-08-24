@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Account, Position } from '../../../shared/types/index.js';
+import type { User, Account, Position } from '@shared/types';
 
 interface DashboardProps {
   user: User;

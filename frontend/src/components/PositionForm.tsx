@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Account, Position } from '../../../shared/types/index.js';
+import type { Account, Position } from '@shared/types';
 import { positionAPI } from '../services/api';
 
 interface PositionFormProps {

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User } from '../../../shared/types/index.js';
+import type { User } from '@shared/types';
 
 interface AIQueryProps {
   user: User;
