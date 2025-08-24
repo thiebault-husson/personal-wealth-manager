@@ -1,13 +1,13 @@
-import { User, Account, Position } from '../../../shared/types';
+import type { User, Account, Position } from '@shared/types';
 
 const BASE_URL = 'http://localhost:3000';
 
 // Health API
 export const healthAPI = {
-  check: async () => {
+  async check() {
     const response = await fetch(`${BASE_URL}/health`);
     if (!response.ok) {
-      throw new Error(`Health check failed: ${response.statusText}`);
+      throw new Error(`Health check failed: ${response.status}`);
     }
     return response.json();
   }
@@ -15,138 +15,132 @@ export const healthAPI = {
 
 // User API
 export const userAPI = {
-  getAll: async (): Promise<User[]> => {
-    const response = await fetch(`${BASE_URL}/users`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch users: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  getById: async (id: string): Promise<User> => {
-    const response = await fetch(`${BASE_URL}/users/${id}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  create: async (user: Omit<User, 'id'>): Promise<User> => {
+  async create(userData: Omit<User, 'id'>): Promise<User> {
     const response = await fetch(`${BASE_URL}/users`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(user),
+      body: JSON.stringify(userData),
     });
+
     if (!response.ok) {
-      throw new Error(`Failed to create user: ${response.statusText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Failed to create user: ${response.status}`);
     }
-    return response.json();
+
+    const result = await response.json();
+    return result.data;
   },
 
-  update: async (id: string, user: Partial<User>): Promise<User> => {
-    const response = await fetch(`${BASE_URL}/users/${id}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(user),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to update user: ${response.statusText}`);
+  async getById(id: string): Promise<User | null> {
+    const response = await fetch(`${BASE_URL}/users/${id}`);
+    if (response.status === 404) {
+      return null;
     }
-    return response.json();
+    if (!response.ok) {
+      throw new Error(`Failed to get user: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
   },
 
-  delete: async (id: string): Promise<void> => {
-    const response = await fetch(`${BASE_URL}/users/${id}`, {
-      method: 'DELETE',
-    });
+  async getAll(): Promise<User[]> {
+    const response = await fetch(`${BASE_URL}/users`);
     if (!response.ok) {
-      throw new Error(`Failed to delete user: ${response.statusText}`);
+      throw new Error(`Failed to get users: ${response.status}`);
     }
+    const result = await response.json();
+    return result.data;
   }
 };
 
 // Account API
 export const accountAPI = {
-  getAll: async (): Promise<Account[]> => {
-    const response = await fetch(`${BASE_URL}/accounts`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch accounts: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  getById: async (id: string): Promise<Account> => {
-    const response = await fetch(`${BASE_URL}/accounts/${id}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch account: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  getByUserId: async (userId: string): Promise<Account[]> => {
-    const response = await fetch(`${BASE_URL}/accounts/user/${userId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user accounts: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  create: async (account: Omit<Account, 'id' | 'currency'>): Promise<Account> => {
+  async create(accountData: Omit<Account, 'id'>): Promise<Account> {
     const response = await fetch(`${BASE_URL}/accounts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(account),
+      body: JSON.stringify(accountData),
     });
+
     if (!response.ok) {
-      throw new Error(`Failed to create account: ${response.statusText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Failed to create account: ${response.status}`);
     }
-    return response.json();
+
+    const result = await response.json();
+    return result.data;
+  },
+
+  async getByUserId(userId: string): Promise<Account[]> {
+    const response = await fetch(`${BASE_URL}/accounts/user/${userId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get accounts: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
+  },
+
+  async getById(id: string): Promise<Account | null> {
+    const response = await fetch(`${BASE_URL}/accounts/${id}`);
+    if (response.status === 404) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error(`Failed to get account: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
   }
 };
 
 // Position API
 export const positionAPI = {
-  getAll: async (): Promise<Position[]> => {
-    const response = await fetch(`${BASE_URL}/positions`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch positions: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  getById: async (id: string): Promise<Position> => {
-    const response = await fetch(`${BASE_URL}/positions/${id}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch position: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  getByUserId: async (userId: string): Promise<Position[]> => {
-    const response = await fetch(`${BASE_URL}/positions/user/${userId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user positions: ${response.statusText}`);
-    }
-    return response.json();
-  },
-
-  create: async (position: Omit<Position, 'id'>): Promise<Position> => {
+  async create(positionData: Omit<Position, 'id'>): Promise<Position> {
     const response = await fetch(`${BASE_URL}/positions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(position),
+      body: JSON.stringify(positionData),
     });
+
     if (!response.ok) {
-      throw new Error(`Failed to create position: ${response.statusText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.message || `Failed to create position: ${response.status}`);
     }
-    return response.json();
+
+    const result = await response.json();
+    return result.data;
+  },
+
+  async getByUserId(userId: string): Promise<Position[]> {
+    const response = await fetch(`${BASE_URL}/positions/user/${userId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get positions: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
+  },
+
+  async getByAccountId(accountId: string): Promise<Position[]> {
+    const response = await fetch(`${BASE_URL}/positions/account/${accountId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to get positions: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
+  },
+
+  async getPortfolioSummary(userId: string): Promise<any> {
+    const response = await fetch(`${BASE_URL}/positions/user/${userId}/portfolio`);
+    if (!response.ok) {
+      throw new Error(`Failed to get portfolio summary: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
   }
 };
