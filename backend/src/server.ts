@@ -25,9 +25,11 @@ app.use('/positions', positionRoutes);
 // Health check endpoint - you can test this immediately!
 app.get('/health', async (req, res) => {
   try {
-    const users_count = await UserService.getUserCount();
-    const accounts_count = await ChromaDbService.getAccountCount();
-    const positions_count = await ChromaDbService.getPositionCount();
+    const [users_count, accounts_count, positions_count] = await Promise.all([
+      UserService.getUserCount(),
+      ChromaDbService.getAccountCount(),
+      ChromaDbService.getPositionCount()
+    ]);
     res.json({
       status: 'ok',
       message: 'Personal Wealth Manager API is running',
