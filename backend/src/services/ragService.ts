@@ -1,6 +1,26 @@
 import { Anthropic } from '@anthropic-ai/sdk';
 import { ChromaClient } from 'chromadb';
+import { encoding_for_model } from 'tiktoken';
 import type { User, Account, Position } from '../../../shared/types';
+
+/**
+ * Document chunk interface for semantic chunking
+ */
+interface DocumentChunk {
+  content: string;
+  metadata: {
+    chunkId: string;
+    documentId: string;
+    chunkIndex: number;
+    tokenCount: number;
+    hasTable: boolean;
+    hasFormula: boolean;
+    hasNumbers: boolean;
+    section?: string;
+    subsection?: string;
+    [key: string]: any;
+  };
+}
 
 /**
  * RAG Service for Personal Wealth Manager
@@ -115,18 +135,537 @@ export class RAGService {
   }
 
   /**
-   * Generate embeddings using Claude 3 Haiku (most cost-effective)
-   * This is a placeholder - we'll implement the actual embedding logic in Step 5
+   * Generate embeddings using Claude 3.5 Haiku (most cost-effective)
+   * 
+   * This method uses Claude 3.5 Haiku to extract financial concepts and create
+   * semantic fingerprints for cost-effective, domain-aware embeddings.
    */
   private async generateEmbedding(text: string): Promise<number[]> {
-    // TODO: Implement Claude 3 Haiku embedding generation in Step 5
-    console.log(`🧠 Generating embedding for text (${text.length} chars) using Claude 3 Haiku`);
+    try {
+      console.log(`🧠 Generating embedding for text (${text.length} chars) using Claude 3.5 Haiku`);
+      
+      // Step 1: Use Claude 3.5 Haiku to extract financial concepts
+      const response = await this.anthropic.messages.create({
+        model: this.config.embeddingModel,
+        max_tokens: 300,
+        temperature: 0, // Deterministic for consistent embeddings
+        messages: [
+          {
+            role: 'user',
+            content: `Extract the 20 most important financial concepts, terms, and themes from this text. Focus on:
+- Financial products (401k, IRA, stocks, bonds, etc.)
+- Tax concepts (deductions, brackets, filing status, etc.)
+- Investment strategies (diversification, allocation, etc.)
+- Financial metrics (APR, yield, return, etc.)
+- Regulatory terms (IRS, SEC, FDIC, etc.)
+
+Return ONLY a comma-separated list of single words or short phrases (max 3 words each).
+
+Text: ${text.substring(0, 1000)}`
+          }
+        ]
+      });
+
+      // Step 2: Extract concepts from Claude's response
+      const firstContent = response.content[0];
+      if (!firstContent || firstContent.type !== 'text') {
+        console.warn('Invalid response from Claude, using fallback embedding');
+        return this.generateFallbackEmbedding(text);
+      }
+
+      const concepts = firstContent.text
+        .split(',')
+        .map((c: string) => c.trim().toLowerCase())
+        .filter((c: string) => c.length > 0 && c.length < 50) // Filter valid concepts
+        .slice(0, 20); // Top 20 concepts
+
+      console.log(`📝 Extracted ${concepts.length} financial concepts:`, concepts.slice(0, 5).join(', '), '...');
+
+      // Step 3: Create semantic fingerprint (384 dimensions)
+      const embedding = new Array(this.config.embeddingDimensions).fill(0);
+      
+      // Map each concept to multiple positions in the embedding vector
+      concepts.forEach((concept: string, index: number) => {
+        const importance = (20 - index) / 20; // Higher importance for earlier concepts
+        
+        // Create multiple hash positions for each concept for better distribution
+        for (let i = 0; i < 3; i++) {
+          const hash = this.hashString(concept + i) % this.config.embeddingDimensions;
+          embedding[hash] += importance * 0.1; // Weight by importance
+        }
+      });
+
+      // Step 4: Add text characteristics for additional semantic richness
+      const wordCount = text.split(/\s+/).length;
+      const avgWordLength = text.replace(/\s/g, '').length / Math.max(wordCount, 1);
+      const hasNumbers = /\d/.test(text);
+      const hasCurrency = /\$|USD|dollar|cent/i.test(text);
+      
+      // Add these features to specific positions
+      embedding[0] += Math.log(wordCount + 1) * 0.05;  // Document length signal
+      embedding[1] += avgWordLength * 0.02;             // Complexity signal
+      embedding[2] += hasNumbers ? 0.1 : 0;             // Numerical content signal
+      embedding[3] += hasCurrency ? 0.1 : 0;           // Financial content signal
+
+      // Step 5: Normalize the embedding vector
+      const magnitude = Math.sqrt(embedding.reduce((sum: number, val: number) => sum + val * val, 0));
+      const normalizedEmbedding = magnitude > 0 
+        ? embedding.map((val: number) => val / magnitude)
+        : embedding;
+
+      console.log(`✅ Generated ${this.config.embeddingDimensions}D embedding (magnitude: ${magnitude.toFixed(4)})`);
+      return normalizedEmbedding;
+
+    } catch (error) {
+      console.error('❌ Error generating embedding with Claude 3.5 Haiku:', error);
+      console.log('🔄 Falling back to simple text-based embedding');
+      return this.generateFallbackEmbedding(text);
+    }
+  }
+
+  /**
+   * Simple hash function for consistent concept-to-position mapping
+   */
+  private hashString(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+  }
+
+  /**
+   * Fallback embedding generation when Claude API fails
+   */
+  private generateFallbackEmbedding(text: string): number[] {
+    console.log('🔄 Generating fallback embedding using text analysis');
     
-    // Placeholder: return a simple vector for now
-    const placeholder = new Array(this.config.embeddingDimensions).fill(0)
-      .map((_, i) => Math.sin(i * 0.1) * 0.1);
+    const embedding = new Array(this.config.embeddingDimensions).fill(0);
     
-    return placeholder;
+    // Extract words and create simple frequency-based embedding
+    const words = text.toLowerCase()
+      .match(/\b\w+\b/g) || [];
+    
+    const uniqueWords = [...new Set(words)].slice(0, 50); // Top 50 unique words
+    
+    uniqueWords.forEach((word: string, index: number) => {
+      const frequency = words.filter(w => w === word).length;
+      const importance = frequency / words.length;
+      
+      // Map word to embedding positions
+      for (let i = 0; i < 2; i++) {
+        const hash = this.hashString(word + i) % this.config.embeddingDimensions;
+        embedding[hash] += importance * (1 / Math.sqrt(index + 1));
+      }
+    });
+
+    // Normalize
+    const magnitude = Math.sqrt(embedding.reduce((sum: number, val: number) => sum + val * val, 0));
+    return magnitude > 0 
+      ? embedding.map((val: number) => val / magnitude)
+      : embedding;
+  }
+
+  /**
+   * Semantic Document Chunking Implementation
+   * 
+   * Intelligently chunks documents to preserve semantic integrity:
+   * - 350 tokens per chunk with 60 token overlap
+   * - Preserves tables, formulas, and numbered lists
+   * - Maintains section context and hierarchy
+   * - Optimized for financial document structure
+   */
+  public async chunkDocument(
+    content: string, 
+    documentId: string, 
+    metadata: Record<string, any> = {}
+  ): Promise<DocumentChunk[]> {
+    console.log(`📄 Chunking document ${documentId} (${content.length} chars)`);
+    
+    try {
+      // Initialize tiktoken encoder for accurate token counting
+      const encoder = encoding_for_model('gpt-3.5-turbo'); // Use GPT-3.5 encoding as standard
+      
+      const chunks: DocumentChunk[] = [];
+      let chunkIndex = 0;
+      
+      // Step 1: Preprocess and identify semantic boundaries
+      const preprocessedContent = this.preprocessDocumentContent(content);
+      const semanticBoundaries = this.identifySemanticBoundaries(preprocessedContent);
+      
+      // Step 2: Create chunks respecting semantic boundaries
+      let currentChunk = '';
+      let currentTokenCount = 0;
+      let currentSection = '';
+      let currentSubsection = '';
+      
+      const lines = preprocessedContent.split('\n');
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line) continue;
+        const lineTokens = encoder.encode(line).length;
+        
+        // Detect section headers
+        const sectionMatch = line?.match(/^#+\s+(.+)$/) || line?.match(/^(\d+\.?\d*\.?\s+[A-Z][^.]*[.:]?)$/);
+        if (sectionMatch) {
+          if (line?.match(/^#+\s+/)) {
+            currentSection = sectionMatch[1]?.trim() || '';
+            currentSubsection = '';
+          } else {
+            currentSubsection = sectionMatch[1]?.trim() || '';
+          }
+        }
+        
+        // Check if adding this line would exceed chunk size
+        const potentialTokenCount = currentTokenCount + lineTokens + 1; // +1 for newline
+        
+        if (potentialTokenCount > this.config.chunkSize && currentChunk.length > 0) {
+          // Create chunk before adding the line that would exceed limit
+          const chunk = await this.createDocumentChunk(
+            currentChunk.trim(),
+            documentId,
+            chunkIndex,
+            currentSection,
+            currentSubsection,
+            metadata,
+            encoder
+          );
+          chunks.push(chunk);
+          chunkIndex++;
+          
+          // Start new chunk with overlap
+          const overlapContent = this.extractOverlapContent(currentChunk, this.config.chunkOverlap, encoder);
+          currentChunk = overlapContent + (overlapContent ? '\n' : '') + line;
+          currentTokenCount = encoder.encode(currentChunk).length;
+        } else {
+          // Add line to current chunk
+          currentChunk += (currentChunk ? '\n' : '') + line;
+          currentTokenCount = potentialTokenCount;
+        }
+        
+        // Handle special semantic boundaries (tables, formulas, lists)
+        if (line && this.isSemanticBoundary(line, i, lines)) {
+          // Try to keep semantic units together
+          const semanticUnit = this.extractSemanticUnit(lines, i);
+          if (semanticUnit?.content) {
+            const unitTokens = encoder.encode(semanticUnit.content).length;
+            
+            // If semantic unit is too large for current chunk, finalize current chunk
+            if (currentTokenCount + unitTokens > this.config.chunkSize && currentChunk.length > 0) {
+              const chunk = await this.createDocumentChunk(
+                currentChunk.trim(),
+                documentId,
+                chunkIndex,
+                currentSection,
+                currentSubsection,
+                metadata,
+                encoder
+              );
+              chunks.push(chunk);
+              chunkIndex++;
+              
+              // Start new chunk with the semantic unit
+              const overlapContent = this.extractOverlapContent(currentChunk, this.config.chunkOverlap, encoder);
+              currentChunk = overlapContent + (overlapContent ? '\n' : '') + semanticUnit.content;
+              currentTokenCount = encoder.encode(currentChunk).length;
+            }
+            
+            // Skip the lines we've already processed
+            i += semanticUnit.linesProcessed - 1;
+          }
+        }
+      }
+      
+      // Handle remaining content
+      if (currentChunk.trim().length > 0) {
+        const chunk = await this.createDocumentChunk(
+          currentChunk.trim(),
+          documentId,
+          chunkIndex,
+          currentSection,
+          currentSubsection,
+          metadata,
+          encoder
+        );
+        chunks.push(chunk);
+      }
+      
+      console.log(`✅ Created ${chunks.length} semantic chunks for document ${documentId}`);
+      return chunks;
+      
+    } catch (error) {
+      console.error('❌ Error chunking document:', error);
+      // Fallback to simple chunking
+      return this.fallbackChunking(content, documentId, metadata);
+    }
+  }
+  
+  /**
+   * Preprocess document content for better chunking
+   */
+  private preprocessDocumentContent(content: string): string {
+    return content
+      // Normalize line endings
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      // Normalize whitespace but preserve structure
+      .replace(/[ \t]+/g, ' ')
+      // Remove excessive blank lines but keep paragraph breaks
+      .replace(/\n{3,}/g, '\n\n')
+      // Trim each line
+      .split('\n')
+      .map(line => line.trim())
+      .join('\n')
+      .trim();
+  }
+  
+  /**
+   * Identify semantic boundaries in the document
+   */
+  private identifySemanticBoundaries(content: string): number[] {
+    const boundaries: number[] = [];
+    const lines = content.split('\n');
+    
+    lines.forEach((line, index) => {
+      // Headers (markdown or numbered)
+      if (line.match(/^#+\s+/) || line.match(/^\d+\.?\d*\.?\s+[A-Z]/)) {
+        boundaries.push(index);
+      }
+      // Table boundaries
+      if (line.includes('|') && line.split('|').length >= 3) {
+        boundaries.push(index);
+      }
+      // Formula or calculation boundaries
+      if (line.match(/[=+\-*/]\s*\$?\d+/) || line.match(/\$\d+[,.]?\d*/)) {
+        boundaries.push(index);
+      }
+      // List items
+      if (line.match(/^[\s]*[-*•]\s+/) || line.match(/^[\s]*\d+\.?\s+/)) {
+        boundaries.push(index);
+      }
+    });
+    
+    return [...new Set(boundaries)].sort((a, b) => a - b);
+  }
+  
+  /**
+   * Check if a line represents a semantic boundary
+   */
+  private isSemanticBoundary(line: string, index: number, lines: string[]): boolean {
+    // Table start
+    if (line.includes('|') && line.split('|').length >= 3) {
+      return true;
+    }
+    
+    // Formula or calculation
+    if (line.match(/[=+\-*/]\s*\$?\d+/) || line.match(/\$\d+[,.]?\d*/)) {
+      return true;
+    }
+    
+    // List start
+    if (line.match(/^[\s]*[-*•]\s+/) || line.match(/^[\s]*\d+\.?\s+/)) {
+      return true;
+    }
+    
+    // Section header
+    if (line.match(/^#+\s+/) || line.match(/^\d+\.?\d*\.?\s+[A-Z]/)) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Extract a complete semantic unit (table, list, formula block)
+   */
+  private extractSemanticUnit(lines: string[], startIndex: number): { content: string; linesProcessed: number } {
+    const startLine = lines[startIndex];
+    if (!startLine) {
+      return { content: '', linesProcessed: 1 };
+    }
+    let endIndex = startIndex;
+    let content = startLine;
+    
+    // Handle tables
+    if (startLine.includes('|') && startLine.split('|').length >= 3) {
+      for (let i = startIndex + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (line?.includes('|') && line.split('|').length >= 3) {
+          content += '\n' + line;
+          endIndex = i;
+        } else if (line?.trim() === '') {
+          // Allow one empty line in tables
+          if (i + 1 < lines.length && lines[i + 1]?.includes('|')) {
+            content += '\n' + line;
+            endIndex = i;
+          } else {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+    }
+    
+    // Handle numbered lists
+    else if (startLine.match(/^[\s]*\d+\.?\s+/)) {
+      for (let i = startIndex + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (line?.match(/^[\s]*\d+\.?\s+/) || (line?.match(/^[\s]+/) && line?.trim())) {
+          content += '\n' + line;
+          endIndex = i;
+        } else if (line?.trim() === '') {
+          // Allow empty lines in lists
+          content += '\n' + line;
+          endIndex = i;
+        } else {
+          break;
+        }
+      }
+    }
+    
+    // Handle bullet lists
+    else if (startLine.match(/^[\s]*[-*•]\s+/)) {
+      for (let i = startIndex + 1; i < lines.length; i++) {
+        const line = lines[i];
+        if (line?.match(/^[\s]*[-*•]\s+/) || (line?.match(/^[\s]+/) && line?.trim())) {
+          content += '\n' + line;
+          endIndex = i;
+        } else if (line?.trim() === '') {
+          content += '\n' + line;
+          endIndex = i;
+        } else {
+          break;
+        }
+      }
+    }
+    
+    return {
+      content: content || '',
+      linesProcessed: endIndex - startIndex + 1
+    };
+  }
+  
+  /**
+   * Extract overlap content from the end of a chunk
+   */
+  private extractOverlapContent(chunk: string, overlapTokens: number, encoder: any): string {
+    const lines = chunk.split('\n');
+    let overlapContent = '';
+    let tokenCount = 0;
+    
+    // Start from the end and work backwards
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      const lineTokens = encoder.encode(line).length;
+      
+      if (tokenCount + lineTokens <= overlapTokens) {
+        overlapContent = line + (overlapContent ? '\n' + overlapContent : '');
+        tokenCount += lineTokens;
+      } else {
+        break;
+      }
+    }
+    
+    return overlapContent;
+  }
+  
+  /**
+   * Create a document chunk with metadata
+   */
+  private async createDocumentChunk(
+    content: string,
+    documentId: string,
+    chunkIndex: number,
+    section: string,
+    subsection: string,
+    baseMetadata: Record<string, any>,
+    encoder: any
+  ): Promise<DocumentChunk> {
+    const tokenCount = encoder.encode(content).length;
+    
+    // Analyze content characteristics
+    const hasTable = content.includes('|') && content.split('|').length >= 6;
+    const hasFormula = /[=+\-*/]\s*\$?\d+/.test(content) || /\$\d+[,.]?\d*/.test(content);
+    const hasNumbers = /\d/.test(content);
+    
+    return {
+      content,
+      metadata: {
+        chunkId: `${documentId}_chunk_${chunkIndex}`,
+        documentId,
+        chunkIndex,
+        tokenCount,
+        hasTable,
+        hasFormula,
+        hasNumbers,
+        ...(section && { section }),
+        ...(subsection && { subsection }),
+        ...baseMetadata
+      }
+    };
+  }
+  
+  /**
+   * Fallback chunking when semantic chunking fails
+   */
+  private fallbackChunking(content: string, documentId: string, metadata: Record<string, any>): DocumentChunk[] {
+    console.log('🔄 Using fallback chunking');
+    
+    const chunks: DocumentChunk[] = [];
+    const encoder = encoding_for_model('gpt-3.5-turbo');
+    
+    const words = content.split(/\s+/);
+    let currentChunk = '';
+    let chunkIndex = 0;
+    
+    for (const word of words) {
+      const testChunk = currentChunk + (currentChunk ? ' ' : '') + word;
+      const tokenCount = encoder.encode(testChunk).length;
+      
+      if (tokenCount > this.config.chunkSize && currentChunk.length > 0) {
+        chunks.push({
+          content: currentChunk,
+          metadata: {
+            chunkId: `${documentId}_fallback_${chunkIndex}`,
+            documentId,
+            chunkIndex,
+            tokenCount: encoder.encode(currentChunk).length,
+            hasTable: false,
+            hasFormula: false,
+            hasNumbers: /\d/.test(currentChunk),
+            ...metadata
+          }
+        });
+        
+        chunkIndex++;
+        currentChunk = word;
+      } else {
+        currentChunk = testChunk;
+      }
+    }
+    
+    // Add remaining content
+    if (currentChunk.length > 0) {
+      chunks.push({
+        content: currentChunk,
+        metadata: {
+          chunkId: `${documentId}_fallback_${chunkIndex}`,
+          documentId,
+          chunkIndex,
+          tokenCount: encoder.encode(currentChunk).length,
+          hasTable: false,
+          hasFormula: false,
+          hasNumbers: /\d/.test(currentChunk),
+          ...metadata
+        }
+      });
+    }
+    
+    return chunks;
   }
 
   /**
@@ -213,16 +752,54 @@ Please provide helpful, accurate financial advice. If you need more specific inf
   }
 
   /**
-   * Add documents to the knowledge base
-   * This is a placeholder - we'll implement in Step 6
+   * Add documents to the knowledge base with semantic chunking
    */
   public async addDocument(content: string, metadata: Record<string, any> = {}): Promise<void> {
     await this.initialize();
     
-    console.log(`📚 Adding document to knowledge base (${content.length} chars)`);
-    // TODO: Implement document chunking and ingestion in Step 6
+    const documentId = metadata.documentId || `doc_${Date.now()}`;
+    console.log(`📚 Adding document ${documentId} to knowledge base (${content.length} chars)`);
     
-    console.log('✅ Document added successfully (placeholder)');
+    try {
+      // Step 1: Chunk the document semantically
+      const chunks = await this.chunkDocument(content, documentId, metadata);
+      console.log(`📄 Created ${chunks.length} chunks for document ${documentId}`);
+      
+      // Step 2: Generate embeddings for each chunk
+      const embeddings: number[][] = [];
+      const chunkContents: string[] = [];
+      const chunkMetadata: Record<string, any>[] = [];
+      const chunkIds: string[] = [];
+      
+      for (const chunk of chunks) {
+        console.log(`🧠 Generating embedding for chunk ${chunk.metadata.chunkIndex + 1}/${chunks.length}`);
+        
+        const embedding = await this.generateEmbedding(chunk.content);
+        
+        embeddings.push(embedding);
+        chunkContents.push(chunk.content);
+        chunkMetadata.push(chunk.metadata);
+        chunkIds.push(chunk.metadata.chunkId);
+      }
+      
+      // Step 3: Store chunks and embeddings in ChromaDB
+      const collection = await this.chromaClient.getCollection({
+        name: this.config.documentsCollection
+      });
+      
+      await collection.add({
+        ids: chunkIds,
+        embeddings: embeddings,
+        documents: chunkContents,
+        metadatas: chunkMetadata
+      });
+      
+      console.log(`✅ Successfully added ${chunks.length} chunks to ChromaDB for document ${documentId}`);
+      
+    } catch (error) {
+      console.error(`❌ Error adding document ${documentId}:`, error);
+      throw new Error(`Failed to add document: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   /**
