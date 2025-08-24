@@ -14,6 +14,14 @@ export class PositionService {
       throw new Error('Account not found');
     }
 
+    // Defensive validation (mirror update guards)
+    if (!Number.isFinite(positionData.quantity) || positionData.quantity <= 0 || positionData.quantity > 999_999_999) {
+      throw new Error('Invalid quantity');
+    }
+    if (!Number.isFinite(positionData.value) || positionData.value <= 0 || positionData.value > 999_999_999.99) {
+      throw new Error('Invalid value');
+    }
+
     const newPosition: Position = {
       id: uuidv4(),
       account_id: positionData.account_id,
@@ -23,13 +31,13 @@ export class PositionService {
       value: positionData.value
     };
 
-    await ChromaDbService.addPosition(newPosition);
+    const persisted = await ChromaDbService.addPosition(newPosition);
 
     if (process.env.NODE_ENV !== 'test') {
-      console.log(`✅ Created position: ${newPosition.ticker} (${newPosition.asset_type}) - ${newPosition.quantity} units @ $${newPosition.value.toLocaleString()}`);
+      console.log(`✅ Created position: ${persisted.ticker} (${persisted.asset_type}) - ${persisted.quantity} units @ $${persisted.value.toLocaleString()} total`);
     }
     
-    return newPosition;
+    return persisted;
   }
 
   /**
@@ -56,14 +64,11 @@ export class PositionService {
       return [];
     }
 
-    // Get positions for all accounts
-    const allPositions: Position[] = [];
-    for (const account of accounts) {
-      const accountPositions = await this.getPositionsByAccountId(account.id);
-      allPositions.push(...accountPositions);
-    }
-
-    return allPositions;
+    // Get positions for all accounts in parallel
+    const positionsByAccount = await Promise.all(
+      accounts.map((a) => this.getPositionsByAccountId(a.id))
+    );
+    return positionsByAccount.flat();
   }
 
   /**
@@ -92,8 +97,8 @@ export class PositionService {
       quantity: newQuantity
     };
 
-    await ChromaDbService.updatePosition(updatedPosition);
-    return updatedPosition;
+    const persisted = await ChromaDbService.updatePosition(updatedPosition);
+    return persisted;
   }
 
   /**
@@ -115,8 +120,8 @@ export class PositionService {
       value: newValue
     };
 
-    await ChromaDbService.updatePosition(updatedPosition);
-    return updatedPosition;
+    const persisted = await ChromaDbService.updatePosition(updatedPosition);
+    return persisted;
   }
 
   /**
