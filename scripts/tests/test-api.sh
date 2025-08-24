@@ -41,6 +41,12 @@ log_warning() {
     echo -e "${YELLOW}⚠️  $1${NC}"
 }
 
+# Helper function to extract ID from JSON response
+extract_id() {
+    # Usage: echo "$json" | extract_id
+    jq -r '.data.id // .id // empty'
+}
+
 # Check if server is running
 check_server() {
     log_info "Checking if server is running..."
@@ -111,10 +117,11 @@ test_create_user() {
         -d "$user_data")
     
     if echo "$response" | grep -q '"success":true'; then
-        if command -v jq >/dev/null 2>&1; then
-          USER_ID=$(echo "$response" | jq -r '.data.id // .id')
-        else
-          USER_ID=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        USER_ID=$(echo "$response" | extract_id)
+        if [ -z "$USER_ID" ]; then
+            log_error "Unable to extract user ID from response"
+            echo "   Response: $response"
+            return 1
         fi
         log_success "User created successfully"
         log_info "User ID: $USER_ID"
@@ -167,7 +174,12 @@ test_create_accounts() {
         -d "$account_data")
     
     if echo "$response" | grep -q '"success":true'; then
-        account_id=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        account_id=$(echo "$response" | extract_id)
+        if [ -z "$account_id" ]; then
+            log_error "Could not extract account ID for 401k"
+            echo "   Response: $response"
+            return 1
+        fi
         ACCOUNT_IDS+=("$account_id")
         log_success "401k account created"
         log_info "Account ID: $account_id"
@@ -190,7 +202,12 @@ test_create_accounts() {
         -d "$account_data")
     
     if echo "$response" | grep -q '"success":true'; then
-        account_id=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        account_id=$(echo "$response" | extract_id)
+        if [ -z "$account_id" ]; then
+            log_error "Could not extract account ID for brokerage"
+            echo "   Response: $response"
+            return 1
+        fi
         ACCOUNT_IDS+=("$account_id")
         log_success "Brokerage account created"
         log_info "Account ID: $account_id"
@@ -285,7 +302,12 @@ test_create_positions() {
         -d "$position_data")
     
     if echo "$response" | grep -q '"success":true'; then
-        position_id=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        position_id=$(echo "$response" | extract_id)
+        if [ -z "$position_id" ]; then
+            log_error "Could not extract position ID for AAPL"
+            echo "   Response: $response"
+            return 1
+        fi
         POSITION_IDS+=("$position_id")
         log_success "AAPL position created"
         log_info "Position ID: $position_id"
@@ -309,7 +331,12 @@ test_create_positions() {
         -d "$position_data")
     
     if echo "$response" | grep -q '"success":true'; then
-        position_id=$(echo "$response" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+        position_id=$(echo "$response" | extract_id)
+        if [ -z "$position_id" ]; then
+            log_error "Could not extract position ID for TSLA"
+            echo "   Response: $response"
+            return 1
+        fi
         POSITION_IDS+=("$position_id")
         log_success "TSLA position created"
         log_info "Position ID: $position_id"
@@ -532,6 +559,12 @@ main() {
     # Check prerequisites
     if ! command -v curl &> /dev/null; then
         log_error "curl is required but not installed"
+        exit 1
+    fi
+    
+    if ! command -v jq &> /dev/null; then
+        log_error "jq is required to parse API responses. Please install jq."
+        log_info "Install with: brew install jq (macOS) or apt-get install jq (Ubuntu)"
         exit 1
     fi
     
