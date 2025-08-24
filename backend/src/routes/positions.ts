@@ -1,6 +1,6 @@
 import express from 'express';
 import { PositionService } from '../services/positionService.js';
-import { createPositionSchema, positionIdSchema, quantitySchema, valueSchema } from '../validators/position/profile.js';
+import { createPositionSchema, positionIdSchema, accountIdSchema, userIdSchema, quantitySchema, valueSchema } from '../validators/position/profile.js';
 
 const router = express.Router();
 
@@ -86,7 +86,7 @@ router.get('/:id', async (req, res) => {
  */
 router.get('/account/:accountId', async (req, res) => {
   try {
-    const accountId = positionIdSchema.parse(req.params.accountId);
+    const accountId = accountIdSchema.parse(req.params.accountId);
     const positions = await PositionService.getPositionsByAccountId(accountId);
     
     res.json({
@@ -117,7 +117,7 @@ router.get('/account/:accountId', async (req, res) => {
  */
 router.get('/user/:userId', async (req, res) => {
   try {
-    const userId = positionIdSchema.parse(req.params.userId);
+    const userId = userIdSchema.parse(req.params.userId);
     const positions = await PositionService.getPositionsByUserId(userId);
     
     res.json({
@@ -284,7 +284,7 @@ router.delete('/:id', async (req, res) => {
  */
 router.get('/user/:userId/portfolio', async (req, res) => {
   try {
-    const userId = positionIdSchema.parse(req.params.userId);
+    const userId = userIdSchema.parse(req.params.userId);
     
     const [totalValue, summary] = await Promise.all([
       PositionService.getTotalPortfolioValue(userId),

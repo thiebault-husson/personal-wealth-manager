@@ -12,7 +12,7 @@ export const createPositionSchema = z.object({
   ticker: z.string()
     .trim()
     .min(1, "Ticker symbol is required")
-    .max(10, "Ticker symbol must be less than 10 characters")
+    .max(10, "Ticker symbol must be at most 10 characters")
     .regex(/^[A-Z0-9.-]+$/i, "Ticker can only contain letters, numbers, dots, and hyphens")
     .transform(s => s.toUpperCase()),
   
@@ -31,6 +31,9 @@ export const createPositionSchema = z.object({
 });
 
 export const positionIdSchema = z.string().uuid("Invalid position ID format");
+
+export const accountIdSchema = z.string().uuid("Invalid account ID format");
+export const userIdSchema = z.string().uuid("Invalid user ID format");
 
 // Reusable quantity schema for updates
 export const quantitySchema = z.number()
