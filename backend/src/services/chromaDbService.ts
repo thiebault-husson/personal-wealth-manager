@@ -17,6 +17,7 @@ export class ChromaDbService {
   private static accountsCollection: any;
   private static positionsCollection: any;
   private static isInitialized = false;
+  private static initPromise: Promise<void> | null = null;
 
   static async initialize(): Promise<void> {
     try {
@@ -80,9 +81,13 @@ export class ChromaDbService {
   }
 
   private static async ensureInitialized(): Promise<void> {
-    if (!this.isInitialized) {
-      await this.initialize();
+    if (this.isInitialized) return;
+    if (!this.initPromise) {
+      this.initPromise = this.initialize().finally(() => {
+        this.initPromise = null;
+      });
     }
+    await this.initPromise;
   }
 
   static async createUser(userData: Omit<User, 'id'>): Promise<User> {
@@ -372,7 +377,7 @@ export class ChromaDbService {
     await this.ensureInitialized();
 
     try {
-      const results = await this.positionsCollection.get({ ids: [id] });
+      const results = await this.positionsCollection.get({ ids: [id], include: ['documents'] });
 
       if (!results.documents || results.documents.length === 0) {
         return null;
