@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import { AccountService } from '../services/accountService.js';
 import { createAccountSchema, accountIdSchema } from '../validators/account/profile.js';
+import { userIdSchema } from '../validators/user/profile.js';
 
 const router = express.Router();
 
@@ -11,17 +12,27 @@ router.post('/', async (req, res) => {
     const accountData = createAccountSchema.parse(req.body);
     const account = await AccountService.createAccount(accountData);
     
-    res.status(201).json({
-      success: true,
-      data: account,
-      message: 'Account created successfully'
-    });
+    res.status(201)
+      .location(`/accounts/${account.id}`)
+      .json({
+        success: true,
+        data: account,
+        message: 'Account created successfully'
+      });
   } catch (error: unknown) {
+    console.error('Account creation error:', error);
+    
     if (error instanceof z.ZodError) {
+      const formattedErrors = error.issues.map(issue => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+        code: issue.code
+      }));
+      
       return res.status(422).json({
         success: false,
         message: 'Validation failed',
-        errors: error.issues
+        errors: formattedErrors
       });
     }
     
@@ -33,9 +44,10 @@ router.post('/', async (req, res) => {
         });
       }
       
+      // Don't expose internal error messages in production
       return res.status(500).json({
         success: false,
-        message: error.message
+        message: 'Internal server error'
       });
     }
     
@@ -91,7 +103,7 @@ router.get('/:id', async (req, res) => {
 // GET /accounts/user/:userId - Get all accounts for a user
 router.get('/user/:userId', async (req, res) => {
   try {
-    const userId = accountIdSchema.parse(req.params.userId);
+    const userId = userIdSchema.parse(req.params.userId);
     const accounts = await AccountService.getAccountsByUserId(userId);
     
     res.json({
@@ -100,22 +112,29 @@ router.get('/user/:userId', async (req, res) => {
       count: accounts.length
     });
   } catch (error: unknown) {
+    console.error('Get accounts by user error:', error);
+    
     if (error instanceof z.ZodError) {
+      const formattedErrors = error.issues.map(issue => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+        code: issue.code
+      }));
+      
       return res.status(422).json({
         success: false,
         message: 'Invalid user ID format',
-        errors: error.issues
+        errors: formattedErrors
       });
     }
     
     if (error instanceof Error) {
       return res.status(500).json({
         success: false,
-        message: error.message
+        message: 'Internal server error'
       });
     }
     
-    console.error('Unknown error in GET /accounts/user/:userId:', error);
     res.status(500).json({
       success: false,
       message: 'Internal server error'

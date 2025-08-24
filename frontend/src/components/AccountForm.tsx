@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { User, Account } from '@shared/types';
 import { accountAPI } from '../services/api';
+import { formatCurrency, prettifyLabel } from '../utils/format';
 
 interface AccountFormProps {
   user: User;
@@ -108,14 +109,7 @@ const AccountForm: React.FC<AccountFormProps> = ({
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+
 
   const getTotalBalance = () => {
     return accounts.reduce((sum, account) => sum + account.balance, 0);

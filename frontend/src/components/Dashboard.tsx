@@ -1,5 +1,6 @@
 import React from 'react';
 import type { User, Account, Position } from '@shared/types';
+import { formatCurrency, prettifyLabel } from '../utils/format';
 
 interface DashboardProps {
   user: User;
@@ -36,15 +37,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, accounts, positions }) => {
           <h3>💰 Portfolio Overview</h3>
           <div className="metric-grid">
             <div className="metric">
-              <div className="metric-value">${totalNetWorth.toLocaleString()}</div>
+              <div className="metric-value">{formatCurrency(totalNetWorth)}</div>
               <div className="metric-label">Total Net Worth</div>
             </div>
             <div className="metric">
-              <div className="metric-value">${totalAccountBalance.toLocaleString()}</div>
+              <div className="metric-value">{formatCurrency(totalAccountBalance)}</div>
               <div className="metric-label">Account Balance</div>
             </div>
             <div className="metric">
-              <div className="metric-value">${totalPositionValue.toLocaleString()}</div>
+              <div className="metric-value">{formatCurrency(totalPositionValue)}</div>
               <div className="metric-label">Investment Value</div>
             </div>
           </div>
@@ -62,7 +63,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, accounts, positions }) => {
                     <span className="summary-type">{account.type}</span>
                   </div>
                   <div className="summary-value">
-                    ${account.balance.toLocaleString()}
+                    {formatCurrency(account.balance)}
                   </div>
                 </div>
               ))}
@@ -84,11 +85,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, accounts, positions }) => {
                 return (
                   <div key={assetType} className="allocation-item">
                     <div className="allocation-info">
-                      <strong>{assetType.replace('_', ' ')}</strong>
+                      <strong>{prettifyLabel(assetType)}</strong>
                       <span className="allocation-count">{data.count} positions</span>
                     </div>
                     <div className="allocation-value">
-                      <div>${data.value.toLocaleString()}</div>
+                      <div>{formatCurrency(data.value)}</div>
                       <div className="allocation-percentage">{percentage.toFixed(1)}%</div>
                     </div>
                   </div>

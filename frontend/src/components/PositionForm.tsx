@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { Account, Position } from '@shared/types';
 import { positionAPI } from '../services/api';
 
@@ -23,10 +23,17 @@ const PositionForm: React.FC<PositionFormProps> = ({
   setIsLoading,
   setError
 }) => {
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [formData, setFormData] = useState({
     account_id: accounts[0]?.id || '',
     ticker: '',
-    asset_type: 'stock' as const,
+    asset_type: 'stock' as Position['asset_type'],
     quantity: 0,
     value: 0
   });
@@ -38,20 +45,30 @@ const PositionForm: React.FC<PositionFormProps> = ({
 
     try {
       const position = await positionAPI.create(formData);
+      
+      // Check if component is still mounted before updating state
+      if (!mountedRef.current) return;
+      
       onPositionAdded(position);
       
       // Reset form
       setFormData({
         account_id: accounts[0]?.id || '',
         ticker: '',
-        asset_type: 'stock',
+        asset_type: 'stock' as Position['asset_type'],
         quantity: 0,
         value: 0
       });
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to create position');
+      // Check if component is still mounted before updating state
+      if (mountedRef.current) {
+        setError(error instanceof Error ? error.message : 'Failed to create position');
+      }
     } finally {
-      setIsLoading(false);
+      // Check if component is still mounted before updating state
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -136,7 +153,7 @@ const PositionForm: React.FC<PositionFormProps> = ({
             <select
               id="asset_type"
               value={formData.asset_type}
-              onChange={(e) => setFormData({ ...formData, asset_type: e.target.value as any })}
+              onChange={(e) => setFormData({ ...formData, asset_type: e.target.value as Position['asset_type'] })}
               required
               disabled={isLoading}
             >
@@ -157,7 +174,7 @@ const PositionForm: React.FC<PositionFormProps> = ({
             <input
               type="number"
               id="quantity"
-              min="0"
+              min="0.001"
               step="0.001"
               value={formData.quantity}
               onChange={(e) => setFormData({ ...formData, quantity: parseFloat(e.target.value) || 0 })}
@@ -172,8 +189,8 @@ const PositionForm: React.FC<PositionFormProps> = ({
             <input
               type="number"
               id="value"
-              min="0"
-              step="0.01"
+              min="1"
+              step="1"
               value={formData.value}
               onChange={(e) => setFormData({ ...formData, value: parseFloat(e.target.value) || 0 })}
               placeholder="0.00"

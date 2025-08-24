@@ -1,14 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { User } from '@shared/types';
 
 interface AIQueryProps {
   user: User;
 }
 
+// Hoist static example queries to avoid re-allocation
+const EXAMPLE_QUERIES = [
+  "What's the best tax strategy for my situation?",
+  "How should I allocate my investments based on my risk tolerance?",
+  "What retirement accounts should I prioritize?",
+  "Are there any tax-advantaged accounts I should consider?",
+  "How can I optimize my portfolio for my age and goals?"
+];
+
 const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +37,9 @@ const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
       // TODO: Implement actual AI query endpoint
       // For now, show a placeholder response
       await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API delay
+      
+      // Check if component is still mounted before updating state
+      if (!mountedRef.current) return;
       
       setResponse(`🤖 AI Assistant: Thank you for your question, ${user.full_name}! 
 
@@ -44,9 +63,15 @@ Stay tuned for the full AI-powered experience! 🚀`);
       
       setQuery('');
     } catch (error) {
-      setResponse('❌ Sorry, I encountered an error. Please try again later.');
+      // Check if component is still mounted before updating state
+      if (mountedRef.current) {
+        setResponse('❌ Sorry, I encountered an error. Please try again later.');
+      }
     } finally {
-      setIsLoading(false);
+      // Check if component is still mounted before updating state
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -54,13 +79,7 @@ Stay tuned for the full AI-powered experience! 🚀`);
     setQuery(exampleQuery);
   };
 
-  const exampleQueries = [
-    "What's the best tax strategy for my situation?",
-    "How should I allocate my investments based on my risk tolerance?",
-    "What retirement accounts should I prioritize?",
-    "Are there any tax-advantaged accounts I should consider?",
-    "How can I optimize my portfolio for my age and goals?"
-  ];
+
 
   return (
     <div className="ai-query">
@@ -78,6 +97,7 @@ Stay tuned for the full AI-powered experience! 🚀`);
             rows={3}
             disabled={isLoading}
             className="query-input"
+            aria-label="Financial advice query"
           />
         </div>
         <button 
@@ -93,7 +113,7 @@ Stay tuned for the full AI-powered experience! 🚀`);
         <div className="example-queries">
           <h4>💡 Try asking:</h4>
           <div className="example-buttons">
-            {exampleQueries.map((example, index) => (
+            {EXAMPLE_QUERIES.map((example, index) => (
               <button
                 key={index}
                 onClick={() => handleExampleQuery(example)}
@@ -108,14 +128,14 @@ Stay tuned for the full AI-powered experience! 🚀`);
       )}
 
       {isLoading && (
-        <div className="ai-loading">
+        <div className="ai-loading" aria-live="polite">
           <div className="loading-spinner"></div>
           <p>AI is analyzing your profile and generating personalized advice...</p>
         </div>
       )}
 
       {response && (
-        <div className="ai-response">
+        <div className="ai-response" aria-live="polite">
           <div className="response-content">
             {response.split('\n').map((line, index) => (
               <p key={index}>{line}</p>

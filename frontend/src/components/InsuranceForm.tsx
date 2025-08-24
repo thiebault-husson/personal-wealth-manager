@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type { User, Insurance } from '@shared/types';
+import { formatCurrency } from '../utils/format';
+
+// Strongly typed form data interface
+interface InsuranceFormData {
+  policy_type: Insurance['policy_type'];
+  provider: string;
+  coverage_amount: number;
+  annual_premium: number;
+  cash_value: number;
+  beneficiary: string;
+}
 
 interface InsuranceFormProps {
   user: User;
@@ -22,8 +34,8 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
   setIsLoading,
   setError
 }) => {
-  const [formData, setFormData] = useState({
-    policy_type: 'term_life' as const,
+  const [formData, setFormData] = useState<InsuranceFormData>({
+    policy_type: 'term_life',
     provider: '',
     coverage_amount: 0,
     annual_premium: 0,
@@ -129,7 +141,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
 
       // For now, create a mock insurance object (until backend API is implemented)
       const newInsurance: Insurance = {
-        id: `insurance_${Date.now()}`,
+        id: uuidv4(),
         ...insuranceData
       };
 
@@ -137,7 +149,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
       
       // Reset form
       setFormData({
-        policy_type: 'term_life' as const,
+        policy_type: 'term_life',
         provider: '',
         coverage_amount: 0,
         annual_premium: 0,
@@ -152,7 +164,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
     }
   };
 
-  const handleInputChange = (field: string, value: any) => {
+  const handleInputChange = <K extends keyof InsuranceFormData>(field: K, value: InsuranceFormData[K]) => {
     setFormData({ ...formData, [field]: value });
     
     // Clear field error when user starts typing
@@ -163,14 +175,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+
 
   const getTotalCoverage = () => {
     return insurance.reduce((sum, policy) => sum + policy.coverage_amount, 0);
@@ -303,7 +308,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
                     id="policy-type"
                     className="form-select"
                     value={formData.policy_type}
-                    onChange={(e) => handleInputChange('policy_type', e.target.value)}
+                    onChange={(e) => handleInputChange('policy_type', e.target.value as Insurance['policy_type'])}
                     disabled={isLoading}
                   >
                     {policyTypes.map((type) => (
@@ -345,7 +350,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
                       id="coverage-amount"
                       type="number"
                       min="0"
-                      step="1000"
+                      step="1"
                       className={`form-input pl-8 ${formErrors.coverage_amount ? 'error' : ''}`}
                       value={formData.coverage_amount}
                       onChange={(e) => handleInputChange('coverage_amount', parseFloat(e.target.value) || 0)}
@@ -369,7 +374,7 @@ const InsuranceForm: React.FC<InsuranceFormProps> = ({
                       id="annual-premium"
                       type="number"
                       min="0"
-                      step="100"
+                      step="1"
                       className={`form-input pl-8 ${formErrors.annual_premium ? 'error' : ''}`}
                       value={formData.annual_premium}
                       onChange={(e) => handleInputChange('annual_premium', parseFloat(e.target.value) || 0)}
