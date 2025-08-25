@@ -39,8 +39,9 @@ const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
       abortControllerRef.current.abort();
     }
 
-    // Create new abort controller for this request
-    abortControllerRef.current = new AbortController();
+    // Create and capture controller for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     console.log('🚀 Starting AI query:', query);
     console.log('👤 User ID:', user.id);
@@ -51,11 +52,11 @@ const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
     try {
       console.log('📡 Calling RAG API...');
       // Call the actual RAG API
-      const result = await ragAPI.query(user.id, query, abortControllerRef.current.signal);
+      const result = await ragAPI.query(user.id, query, controller.signal);
       console.log('✅ RAG API response received:', result);
       
       // Check if request was aborted
-      if (abortControllerRef.current?.signal.aborted) {
+      if (controller.signal.aborted) {
         console.log('⚠️ Request was aborted, skipping state update');
         return;
       }
@@ -66,8 +67,9 @@ const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
     } catch (error) {
       console.error('❌ AI Query error:', error);
       
-      // Check if request was aborted
-      if (abortControllerRef.current?.signal.aborted) {
+      // Swallow AbortError and skip updates for canceled requests
+      // @ts-expect-error: DOMException on some runtimes
+      if ((error as any)?.name === 'AbortError' || controller.signal.aborted) {
         console.log('⚠️ Request was aborted, skipping error handling');
         return;
       }
@@ -86,7 +88,7 @@ const AIQuery: React.FC<AIQueryProps> = ({ user }) => {
       }
     } finally {
       // Check if request was aborted
-      if (!abortControllerRef.current?.signal.aborted) {
+      if (!controller.signal.aborted) {
         console.log('🏁 Setting loading to false');
         setIsLoading(false);
       }

@@ -99,7 +99,7 @@ export const accountAPI = {
 
 // Position API
 export const positionAPI = {
-  async create(positionData: Omit<Position, 'id'>): Promise<Position> {
+  async create(positionData: Omit<Position, 'id'>, signal?: AbortSignal): Promise<Position> {
     console.log('🌐 Making position API request:', {
       url: `${BASE_URL}/positions`,
       data: positionData
@@ -111,6 +111,7 @@ export const positionAPI = {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(positionData),
+      signal
     });
 
     console.log('📡 Position API response status:', response.status, response.statusText);

@@ -23,11 +23,14 @@ const PositionForm: React.FC<PositionFormProps> = ({
   setIsLoading,
   setError
 }) => {
-  const mountedRef = useRef(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
-      mountedRef.current = false;
+      // Abort any pending request when component unmounts
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
   const [formData, setFormData] = useState({
@@ -43,14 +46,23 @@ const PositionForm: React.FC<PositionFormProps> = ({
     setIsLoading(true);
     setError(null);
 
+    // Abort any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create and capture controller for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     console.log('🚀 Submitting position:', formData);
 
     try {
-      const position = await positionAPI.create(formData);
+      const position = await positionAPI.create(formData, controller.signal);
       console.log('✅ Position created:', position);
       
-      // Check if component is still mounted before updating state
-      if (!mountedRef.current) return;
+      // Check if request was aborted
+      if (controller.signal.aborted) return;
       
       onPositionAdded(position);
       
@@ -66,13 +78,17 @@ const PositionForm: React.FC<PositionFormProps> = ({
         value: 0
       });
     } catch (error) {
-      // Check if component is still mounted before updating state
-      if (mountedRef.current) {
-        setError(error instanceof Error ? error.message : 'Failed to create position');
+      // Swallow AbortError and skip updates for canceled requests
+      // @ts-expect-error: DOMException on some runtimes
+      if ((error as any)?.name === 'AbortError' || controller.signal.aborted) {
+        console.log('⚠️ Position request was aborted, skipping error handling');
+        return;
       }
+      
+      setError(error instanceof Error ? error.message : 'Failed to create position');
     } finally {
-      // Check if component is still mounted before updating state
-      if (mountedRef.current) {
+      // Always reset loading state unless request was aborted
+      if (!controller.signal.aborted) {
         setIsLoading(false);
       }
     }
