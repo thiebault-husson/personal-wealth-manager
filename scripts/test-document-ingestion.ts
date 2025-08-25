@@ -7,14 +7,11 @@
  * Starts with a single document to validate the flow, then processes all documents.
  */
 
-import dotenv from 'dotenv';
+import 'dotenv/config';
 import path from 'path';
 import fs from 'fs';
 import { DocumentIngestionService } from '../backend/src/services/documentIngestionService';
 import { RAGService } from '../backend/src/services/ragService';
-
-// Load environment variables
-dotenv.config();
 
 async function testDocumentIngestion() {
   console.log('📚 Testing Document Ingestion Pipeline...\n');

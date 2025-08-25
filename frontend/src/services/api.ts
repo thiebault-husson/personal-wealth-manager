@@ -100,9 +100,10 @@ export const accountAPI = {
 // Position API
 export const positionAPI = {
   async create(positionData: Omit<Position, 'id'>, signal?: AbortSignal): Promise<Position> {
-    console.log('🌐 Making position API request:', {
+    // Avoid logging raw financial payloads; log only minimal metadata in debug.
+    console.debug('🌐 Position API request (sanitized)', {
       url: `${BASE_URL}/positions`,
-      data: positionData
+      keys: Object.keys(positionData ?? {})
     });
 
     const response = await fetch(`${BASE_URL}/positions`, {
@@ -114,16 +115,18 @@ export const positionAPI = {
       signal
     });
 
-    console.log('📡 Position API response status:', response.status, response.statusText);
+    console.debug('📡 Position API response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorData = await response.json();
+      // Keep error logging but be mindful of payload content in prod tooling.
       console.error('❌ Position API error response:', errorData);
       throw new Error(errorData.message || `Failed to create position: ${response.status}`);
     }
 
     const result = await response.json();
-    console.log('✅ Position API success response:', result);
+    // Do not log entire result; just confirm shape.
+    console.debug('✅ Position API success response (sanitized):', { hasData: !!result?.data });
     return result.data;
   },
 
@@ -158,10 +161,10 @@ export const positionAPI = {
 // RAG API
 export const ragAPI = {
   async query(userId: string, question: string, signal?: AbortSignal): Promise<{ question: string; response: string; user_context: any }> {
-    console.log('🌐 Making RAG API request:', {
+    console.debug('🌐 RAG API request (sanitized):', {
       url: `${BASE_URL}/rag/query`,
       userId,
-      question
+      questionLength: question?.length ?? 0
     });
 
     const response = await fetch(`${BASE_URL}/rag/query`, {
@@ -176,7 +179,7 @@ export const ragAPI = {
       signal, // Pass the abort signal
     });
 
-    console.log('📡 RAG API response status:', response.status, response.statusText);
+    console.debug('📡 RAG API response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorData = await response.json();
@@ -185,7 +188,7 @@ export const ragAPI = {
     }
 
     const result = await response.json();
-    console.log('✅ RAG API success response:', result);
+    console.debug('✅ RAG API success response (sanitized):', { hasData: !!result?.data });
     return result.data;
   },
 
