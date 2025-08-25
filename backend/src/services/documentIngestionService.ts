@@ -2,17 +2,18 @@ import fs from 'fs';
 import path from 'path';
 import { RAGService } from './ragService';
 
-// Import pdf-parse using createRequire for CommonJS compatibility
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
+// pdf-parse types - using any for compatibility
 
 let pdfParse: any = null;
 
-function initializePdfParse() {
+async function initializePdfParse() {
   if (pdfParse) return pdfParse;
   
   try {
-    pdfParse = require('pdf-parse');
+    // Use dynamic import for better TypeScript compatibility
+    // @ts-ignore - pdf-parse doesn't have types
+    const pdfParseModule = await import('pdf-parse');
+    pdfParse = pdfParseModule.default || pdfParseModule;
     console.log('✅ PDF parsing library loaded successfully');
     return pdfParse;
   } catch (error) {
@@ -62,7 +63,7 @@ export class DocumentIngestionService {
    */
   public async ingestPDF(filePath: string, metadata?: Partial<DocumentMetadata>): Promise<void> {
     // Initialize PDF parser
-    const parser = initializePdfParse();
+    const parser = await initializePdfParse();
 
     try {
       console.log(`📄 Processing PDF: ${path.basename(filePath)}`);
@@ -102,7 +103,7 @@ export class DocumentIngestionService {
         filename,
         source,
         category,
-        year,
+        ...(year !== undefined && { year }),
         pages: data.numpages,
         fileSize: stats.size,
         processedAt: new Date().toISOString(),
@@ -203,57 +204,40 @@ export class DocumentIngestionService {
     const yearMatch = filename.match(/20\d{2}/);
     const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
 
+    // Helper function to create return object with proper year handling
+    const createResult = (category: string, source: string) => ({
+      category,
+      source,
+      ...(year !== undefined && { year })
+    });
+
     // IRS documents
     if (lowerFilename.includes('irs') || lowerFilename.includes('publication')) {
-      return {
-        category: 'tax_regulation',
-        source: 'IRS',
-        year
-      };
+      return createResult('tax_regulation', 'IRS');
     }
 
     // State tax documents (NY/NYC)
     if (lowerFilename.includes('nys') || lowerFilename.includes('nyc') || lowerFilename.includes('ny-')) {
-      return {
-        category: 'state_tax',
-        source: 'New York State',
-        year
-      };
+      return createResult('state_tax', 'New York State');
     }
 
     // Financial planning guides
     if (lowerFilename.includes('planning') || lowerFilename.includes('playbook')) {
-      return {
-        category: 'financial_planning',
-        source: 'Financial Institution',
-        year
-      };
+      return createResult('financial_planning', 'Financial Institution');
     }
 
     // Tax planning
     if (lowerFilename.includes('tax') && (lowerFilename.includes('planning') || lowerFilename.includes('cheatsheet'))) {
-      return {
-        category: 'tax_planning',
-        source: 'Financial Institution',
-        year
-      };
+      return createResult('tax_planning', 'Financial Institution');
     }
 
     // Wealth management
     if (lowerFilename.includes('wealth') || lowerFilename.includes('merrill')) {
-      return {
-        category: 'wealth_management',
-        source: 'Financial Institution',
-        year
-      };
+      return createResult('wealth_management', 'Financial Institution');
     }
 
     // Default category
-    return {
-      category: 'general_financial',
-      source: 'Unknown',
-      year
-    };
+    return createResult('general_financial', 'Unknown');
   }
 
   /**
