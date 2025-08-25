@@ -209,7 +209,7 @@ export class ChromaDbService {
         metadatas: [{
           account_id: account.id,
           user_id: account.user_id,
-          account_type: account.account_type,
+          type: account.type,
           created_at: new Date().toISOString()
         }]
       });
@@ -300,7 +300,7 @@ export class ChromaDbService {
         metadatas: [{
           account_id: account.id,
           user_id: account.user_id,
-          account_type: account.account_type,
+          type: account.type,
           updated_at: new Date().toISOString()
         }]
       });
@@ -402,6 +402,28 @@ export class ChromaDbService {
 
     } catch (error) {
       console.error(`❌ Failed to get positions for account ${accountId}:`, error);
+      return [];
+    }
+  }
+
+  static async getPositionsByUserId(userId: string): Promise<Position[]> {
+    await this.ensureInitialized();
+
+    try {
+      // Get all accounts for this user first
+      const userAccounts = await this.getAccountsByUserId(userId);
+      const accountIds = userAccounts.map(account => account.id);
+      
+      if (accountIds.length === 0) {
+        return [];
+      }
+
+      // Get all positions and filter by account IDs
+      const allPositions = await this.getAllPositions();
+      return allPositions.filter(position => accountIds.includes(position.account_id));
+
+    } catch (error) {
+      console.error(`❌ Failed to get positions for user ${userId}:`, error);
       return [];
     }
   }

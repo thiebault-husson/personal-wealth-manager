@@ -17,7 +17,8 @@ export class AccountService {
     const newAccount: Account = {
       id: uuidv4(),
       user_id: accountData.user_id,
-      account_type: accountData.account_type,
+      name: accountData.name,
+      type: accountData.type,
       provider: accountData.provider.trim(),
       balance: accountData.balance,
       currency: 'USD'
@@ -26,7 +27,7 @@ export class AccountService {
     await ChromaDbService.addAccount(newAccount);
 
     if (process.env.NODE_ENV !== 'test') {
-      console.log(`✅ Created account: ${newAccount.account_type} at ${newAccount.provider} ($${newAccount.balance.toLocaleString()})`);
+      console.log(`✅ Created account: ${newAccount.type} at ${newAccount.provider} ($${newAccount.balance.toLocaleString()})`);
     }
     
     return newAccount;

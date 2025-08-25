@@ -9,8 +9,14 @@ export const createAccountSchema = z.object({
     .uuid("Invalid user ID format")
     .describe("User ID must be a valid UUID"),
   
-  account_type: z.enum(['401k', 'ira', 'roth_ira', 'brokerage', 'hsa', '529', 'cash', 'other'])
-    .describe("Account type must be one of: 401k, ira, roth_ira, brokerage, hsa, 529, cash, other"),
+  name: z.string()
+    .trim()
+    .min(2, "Account name must be at least 2 characters")
+    .max(100, "Account name must be less than 100 characters")
+    .describe("Account display name"),
+  
+  type: z.enum(['401k', '403b', 'ira_traditional', 'ira_roth', 'brokerage', 'savings', 'checking', 'hsa', 'other'])
+    .describe("Account type must be one of: 401k, 403b, ira_traditional, ira_roth, brokerage, savings, checking, hsa, other"),
   
   provider: z.string()
     .trim()

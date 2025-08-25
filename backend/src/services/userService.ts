@@ -25,6 +25,8 @@ export class UserService {
       residency_city: userData.residency_city.trim(),
       age: userData.age,
       dependents: userData.dependents,
+      annual_income: userData.annual_income,
+      annual_bonus: userData.annual_bonus,
       risk_tolerance: userData.risk_tolerance,
       goals: userData.goals.map(goal => goal.trim()) as [string, string, string]
     };

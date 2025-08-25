@@ -1,51 +1,65 @@
 import express from 'express';
+import { z } from 'zod';
 import { AccountService } from '../services/accountService.js';
-import { createAccountSchema, accountIdSchema, balanceSchema } from '../validators/account/profile.js';
+import { createAccountSchema, accountIdSchema } from '../validators/account/profile.js';
+import { userIdSchema } from '../validators/user/profile.js';
 
 const router = express.Router();
 
-/**
- * POST /accounts - Create a new account
- */
+// POST /accounts - Create a new account
 router.post('/', async (req, res) => {
   try {
-    const validatedData = createAccountSchema.parse(req.body);
-    const newAccount = await AccountService.createAccount(validatedData);
+    const accountData = createAccountSchema.parse(req.body);
+    const account = await AccountService.createAccount(accountData);
     
-    res.status(201).location(`/accounts/${newAccount.id}`).json({
-      success: true,
-      data: newAccount,
-      message: 'Account created successfully'
-    });
-  } catch (error) {
+    res.status(201)
+      .location(`/accounts/${account.id}`)
+      .json({
+        success: true,
+        data: account,
+        message: 'Account created successfully'
+      });
+  } catch (error: unknown) {
+    console.error('Account creation error:', error);
+    
+    if (error instanceof z.ZodError) {
+      const formattedErrors = error.issues.map(issue => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+        code: issue.code
+      }));
+      
+      return res.status(422).json({
+        success: false,
+        message: 'Validation failed',
+        errors: formattedErrors
+      });
+    }
+    
     if (error instanceof Error) {
       if (error.message === 'User not found') {
         return res.status(404).json({
           success: false,
-          error: 'User not found',
-          message: 'Cannot create account for non-existent user'
+          message: 'User not found'
         });
       }
       
-      return res.status(422).json({
+      // Don't expose internal error messages in production
+      return res.status(500).json({
         success: false,
-        error: 'Validation failed',
-        message: error.message
+        message: 'Internal server error'
       });
     }
     
-    console.error('❌ Account creation error:', error);
+    console.error('Unknown error in POST /accounts:', error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to create account'
+      message: 'Internal server error'
     });
   }
 });
 
-/**
- * GET /accounts/:id - Get account by ID
- */
+// GET /accounts/:id - Get account by ID
 router.get('/:id', async (req, res) => {
   try {
     const id = accountIdSchema.parse(req.params.id);
@@ -54,8 +68,7 @@ router.get('/:id', async (req, res) => {
     if (!account) {
       return res.status(404).json({
         success: false,
-        error: 'Account not found',
-        message: 'Account with this ID does not exist'
+        message: 'Account not found'
       });
     }
     
@@ -63,30 +76,34 @@ router.get('/:id', async (req, res) => {
       success: true,
       data: account
     });
-  } catch (error) {
-    if (error instanceof Error) {
+  } catch (error: unknown) {
+    if (error instanceof z.ZodError) {
       return res.status(422).json({
         success: false,
-        error: 'Invalid account ID',
+        message: 'Invalid account ID format',
+        errors: error.issues
+      });
+    }
+    
+    if (error instanceof Error) {
+      return res.status(500).json({
+        success: false,
         message: error.message
       });
     }
     
-    console.error('❌ Get account error:', error);
+    console.error('Unknown error in GET /accounts/:id:', error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to retrieve account'
+      message: 'Internal server error'
     });
   }
 });
 
-/**
- * GET /accounts/user/:userId - Get all accounts for a user
- */
+// GET /accounts/user/:userId - Get all accounts for a user
 router.get('/user/:userId', async (req, res) => {
   try {
-    const userId = accountIdSchema.parse(req.params.userId);
+    const userId = userIdSchema.parse(req.params.userId);
     const accounts = await AccountService.getAccountsByUserId(userId);
     
     res.json({
@@ -94,99 +111,33 @@ router.get('/user/:userId', async (req, res) => {
       data: accounts,
       count: accounts.length
     });
-  } catch (error) {
-    if (error instanceof Error) {
+  } catch (error: unknown) {
+    console.error('Get accounts by user error:', error);
+    
+    if (error instanceof z.ZodError) {
+      const formattedErrors = error.issues.map(issue => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+        code: issue.code
+      }));
+      
       return res.status(422).json({
         success: false,
-        error: 'Invalid user ID',
-        message: error.message
+        message: 'Invalid user ID format',
+        errors: formattedErrors
       });
     }
     
-    console.error('❌ Get user accounts error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message: 'Failed to retrieve user accounts'
-    });
-  }
-});
-
-/**
- * PUT /accounts/:id/balance - Update account balance
- */
-router.put('/:id/balance', async (req, res) => {
-  try {
-    const id = accountIdSchema.parse(req.params.id);
-    const balance = balanceSchema.parse(req.body.balance);
-    
-    const updatedAccount = await AccountService.updateAccountBalance(id, balance);
-    
-    if (!updatedAccount) {
-      return res.status(404).json({
-        success: false,
-        error: 'Account not found',
-        message: 'Account with this ID does not exist'
-      });
-    }
-    
-    res.json({
-      success: true,
-      data: updatedAccount,
-      message: 'Account balance updated successfully'
-    });
-  } catch (error) {
     if (error instanceof Error) {
-      return res.status(422).json({
+      return res.status(500).json({
         success: false,
-        error: 'Invalid account ID',
-        message: error.message
+        message: 'Internal server error'
       });
     }
     
-    console.error('❌ Update account balance error:', error);
     res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: 'Failed to update account balance'
-    });
-  }
-});
-
-/**
- * DELETE /accounts/:id - Delete account
- */
-router.delete('/:id', async (req, res) => {
-  try {
-    const id = accountIdSchema.parse(req.params.id);
-    const deleted = await AccountService.deleteAccount(id);
-    
-    if (!deleted) {
-      return res.status(404).json({
-        success: false,
-        error: 'Account not found',
-        message: 'Account with this ID does not exist'
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Account deleted successfully'
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      return res.status(422).json({
-        success: false,
-        error: 'Invalid account ID',
-        message: error.message
-      });
-    }
-    
-    console.error('❌ Delete account error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      message: 'Failed to delete account'
+      message: 'Internal server error'
     });
   }
 });

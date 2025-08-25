@@ -4,12 +4,13 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx backend/src/server.ts",
+    "dev": "concurrently -k \"npm run backend\" \"npm run frontend\"",
+    "dev-backend-only": "tsx backend/src/server.ts",
     "build": "tsc",
     "start": "node dist/backend/src/server.js",
     "frontend": "cd frontend && npm run dev",
-    "backend": "npm run dev",
-    "chromadb": "mkdir -p backend/db && docker run -p 8000:8000 -v $(pwd)/backend/db:/chroma/chroma chromadb/chroma:latest",
+    "backend": "tsx backend/src/server.ts",
+    "chromadb": "mkdir -p backend/db && docker run -p ${CHROMA_PORT:-8000}:8000 -v $(pwd)/backend/db:/chroma/chroma chromadb/chroma:0.5.4",
     "chromadb-local": "mkdir -p backend/db && npx chroma start --persist ./backend/db",
     "precommit": "npm run type-check && npm run lint && npm run build",
     "type-check": "tsc --noEmit",
@@ -18,6 +19,7 @@
     "test-api": "node scripts/tests/test-api.js",
     "test-api-shell": "./scripts/tests/test-api.sh",
     "test-manual": "echo '📋 Manual test instructions in TEST-PROTOCOL.md'",
+    "start-dev": "./scripts/start-dev.sh",
     "quality-check": "npm run type-check && npm run lint && echo '✅ All quality checks passed!'"
   },
   "keywords": [],
@@ -29,16 +31,20 @@
     "@types/express": "^5.0.3",
     "@types/node": "^24.3.0",
     "@types/uuid": "^10.0.0",
+    "concurrently": "^9.2.0",
     "tsx": "^4.20.4",
     "typescript": "^5.9.2"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.29.0",
+    "@anthropic-ai/sdk": "^0.29.2",
     "@chroma-core/default-embed": "^0.1.8",
     "chromadb": "^3.0.14",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
+    "mammoth": "^1.10.0",
+    "pdf-parse": "^1.1.1",
+    "tiktoken": "^1.0.22",
     "uuid": "^11.1.0",
     "zod": "^4.1.0"
   }
