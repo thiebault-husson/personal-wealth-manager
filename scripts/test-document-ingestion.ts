@@ -9,6 +9,7 @@
 
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { DocumentIngestionService } from '../backend/src/services/documentIngestionService';
 import { RAGService } from '../backend/src/services/ragService';
 
@@ -28,7 +29,12 @@ async function testDocumentIngestion() {
 
     // 2. Test single document ingestion (NYC form)
     console.log('2️⃣ Testing single document ingestion...');
-    const testDocPath = '/Users/chloerojat1/Desktop/23Aug-Hackaton/rag-docs/NYC-1127-Non-Resident-form-2024.pdf';
+    const projectRoot = process.cwd();
+    const ragDocsDir = process.env.RAG_DOCS_DIR ?? path.join(projectRoot, 'rag-docs');
+    const testDocPath = process.env.TEST_DOC_PATH ?? path.join(ragDocsDir, 'NYC-1127-Non-Resident-form-2024.pdf');
+    if (!fs.existsSync(testDocPath)) {
+      throw new Error(`Test document not found at ${testDocPath}. Set TEST_DOC_PATH or RAG_DOCS_DIR.`);
+    }
     
     console.log(`📄 Processing test document: ${path.basename(testDocPath)}`);
     await ingestionService.ingestPDF(testDocPath);
@@ -106,7 +112,11 @@ async function ingestAllDocuments() {
 
   try {
     const ingestionService = DocumentIngestionService.getInstance();
-    const ragDocsPath = '/Users/chloerojat1/Desktop/23Aug-Hackaton/rag-docs';
+    const projectRoot = process.cwd();
+    const ragDocsPath = process.env.RAG_DOCS_DIR ?? path.join(projectRoot, 'rag-docs');
+    if (!fs.existsSync(ragDocsPath)) {
+      throw new Error(`Documents directory not found at ${ragDocsPath}. Set RAG_DOCS_DIR.`);
+    }
     
     await ingestionService.ingestDirectory(ragDocsPath);
     
