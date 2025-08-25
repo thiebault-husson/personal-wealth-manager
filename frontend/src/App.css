@@ -182,8 +182,14 @@
   position: relative;
   /* Avoid horizontal scrollbar when 100vw includes scrollbar width */
   overflow-x: hidden;
-  /* Where supported, clip instead of hiding */
-  overflow-x: clip;
+}
+
+/* Progressive enhancement: use clip when supported */
+@supports (overflow: clip) {
+  .dashboard-container {
+    /* Prefer clipping when available */
+    overflow-x: clip;
+  }
 }
 
 .dashboard-main {
