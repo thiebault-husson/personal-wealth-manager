@@ -814,7 +814,9 @@ PRIORITY_SECTIONS: IRA Contribution Limits, Retirement Planning, Tax Deductions`
    * Extract field from Claude's structured response
    */
   private extractField(text: string, fieldName: string): string | undefined {
-    const regex = new RegExp(`${fieldName}:\\s*(.+?)(?=\\n[A-Z_]+:|$)`, 'i');
+    // Sanitize fieldName to prevent ReDoS attacks
+    const sanitizedFieldName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp(`${sanitizedFieldName}:\\s*(.+?)(?=\\n[A-Z_]+:|$)`, 'i');
     const match = text.match(regex);
     return match?.[1]?.trim();
   }
@@ -848,7 +850,9 @@ PRIORITY_SECTIONS: IRA Contribution Limits, Retirement Planning, Tax Deductions`
     // Apply abbreviation expansions
     for (const [abbr, expansion] of Object.entries(abbreviations)) {
       if (query.toLowerCase().includes(abbr.toLowerCase())) {
-        expanded = expanded.replace(new RegExp(abbr, 'gi'), expansion);
+        // Sanitize abbreviation to prevent ReDoS attacks
+        const sanitizedAbbr = abbr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        expanded = expanded.replace(new RegExp(sanitizedAbbr, 'gi'), expansion);
         expansionTerms.push(expansion);
       }
     }
@@ -1627,7 +1631,7 @@ Content: ${doc.content.trim()}
         name: this.config.documentsCollection
       });
       
-      await collection.add({
+      await collection.upsert({
         ids: chunkIds,
         embeddings: embeddings,
         documents: chunkContents,

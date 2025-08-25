@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import { RAGService } from './ragService';
 
 // pdf-parse types - using any for compatibility
@@ -93,7 +94,8 @@ export class DocumentIngestionService {
       // Extract metadata from filename and file stats
       const stats = fs.statSync(filePath);
       const filename = path.basename(filePath);
-      const documentId = this.generateDocumentId(filename);
+      const hash = createHash('sha1').update(pdfBuffer).digest('hex').slice(0, 12);
+      const documentId = this.generateDocumentId(filename, hash);
 
       // Determine document category and source from filename
       const { category, source, year } = this.categorizeDocument(filename);
@@ -180,9 +182,9 @@ export class DocumentIngestionService {
   }
 
   /**
-   * Generate a unique document ID from filename
+   * Generate a unique document ID from filename and content hash
    */
-  private generateDocumentId(filename: string): string {
+  private generateDocumentId(filename: string, contentHash?: string): string {
     // Remove extension and clean up filename
     const baseName = filename.replace(/\.pdf$/i, '');
     const cleanName = baseName
@@ -191,7 +193,7 @@ export class DocumentIngestionService {
       .replace(/-+/g, '-')
       .replace(/^-|-$/g, '');
     
-    return cleanName;
+    return contentHash ? `${cleanName}-${contentHash}` : cleanName;
   }
 
   /**
