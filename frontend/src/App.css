@@ -173,12 +173,17 @@
 }
 
 /* Dashboard Layout */
+/* Full-bleed container spanning viewport width while the page stays centered */
 .dashboard-container {
   width: 100vw;
   margin: 0 calc(-50vw + 50%);
   padding: 0;
   display: block;
   position: relative;
+  /* Avoid horizontal scrollbar when 100vw includes scrollbar width */
+  overflow-x: hidden;
+  /* Where supported, clip instead of hiding */
+  overflow-x: clip;
 }
 
 .dashboard-main {
@@ -426,7 +431,8 @@
   max-width: 1400px;
   width: 100%;
   transition: all var(--transition-slow);
-  overflow: hidden;
+  /* Allow sticky descendants (e.g. .left-column) to stick without being clipped */
+  overflow: visible;
   align-self: center;
 }
 
