@@ -43,8 +43,11 @@ const PositionForm: React.FC<PositionFormProps> = ({
     setIsLoading(true);
     setError(null);
 
+    console.log('🚀 Submitting position:', formData);
+
     try {
       const position = await positionAPI.create(formData);
+      console.log('✅ Position created:', position);
       
       // Check if component is still mounted before updating state
       if (!mountedRef.current) return;

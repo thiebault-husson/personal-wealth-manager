@@ -100,6 +100,11 @@ export const accountAPI = {
 // Position API
 export const positionAPI = {
   async create(positionData: Omit<Position, 'id'>): Promise<Position> {
+    console.log('🌐 Making position API request:', {
+      url: `${BASE_URL}/positions`,
+      data: positionData
+    });
+
     const response = await fetch(`${BASE_URL}/positions`, {
       method: 'POST',
       headers: {
@@ -108,12 +113,16 @@ export const positionAPI = {
       body: JSON.stringify(positionData),
     });
 
+    console.log('📡 Position API response status:', response.status, response.statusText);
+
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('❌ Position API error response:', errorData);
       throw new Error(errorData.message || `Failed to create position: ${response.status}`);
     }
 
     const result = await response.json();
+    console.log('✅ Position API success response:', result);
     return result.data;
   },
 
