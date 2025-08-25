@@ -99,21 +99,34 @@ export const accountAPI = {
 
 // Position API
 export const positionAPI = {
-  async create(positionData: Omit<Position, 'id'>): Promise<Position> {
+  async create(positionData: Omit<Position, 'id'>, signal?: AbortSignal): Promise<Position> {
+    // Avoid logging raw financial payloads; log only minimal metadata in debug.
+    console.debug('🌐 Position API request (sanitized)', {
+      url: `${BASE_URL}/positions`,
+      keys: Object.keys(positionData ?? {})
+    });
+
     const response = await fetch(`${BASE_URL}/positions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(positionData),
+      signal
     });
+
+    console.debug('📡 Position API response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorData = await response.json();
+      // Keep error logging but be mindful of payload content in prod tooling.
+      console.error('❌ Position API error response:', errorData);
       throw new Error(errorData.message || `Failed to create position: ${response.status}`);
     }
 
     const result = await response.json();
+    // Do not log entire result; just confirm shape.
+    console.debug('✅ Position API success response (sanitized):', { hasData: !!result?.data });
     return result.data;
   },
 
@@ -139,6 +152,50 @@ export const positionAPI = {
     const response = await fetch(`${BASE_URL}/positions/user/${userId}/portfolio`);
     if (!response.ok) {
       throw new Error(`Failed to get portfolio summary: ${response.status}`);
+    }
+    const result = await response.json();
+    return result.data;
+  }
+};
+
+// RAG API
+export const ragAPI = {
+  async query(userId: string, question: string, signal?: AbortSignal): Promise<{ question: string; response: string; user_context: any }> {
+    console.debug('🌐 RAG API request (sanitized):', {
+      url: `${BASE_URL}/rag/query`,
+      userId,
+      questionLength: question?.length ?? 0
+    });
+
+    const response = await fetch(`${BASE_URL}/rag/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        user_id: userId,
+        question: question
+      }),
+      signal, // Pass the abort signal
+    });
+
+    console.debug('📡 RAG API response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('❌ RAG API error response:', errorData);
+      throw new Error(errorData.message || `Failed to query AI: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.debug('✅ RAG API success response (sanitized):', { hasData: !!result?.data });
+    return result.data;
+  },
+
+  async getHealth(): Promise<any> {
+    const response = await fetch(`${BASE_URL}/rag/health`);
+    if (!response.ok) {
+      throw new Error(`Failed to get RAG health: ${response.status}`);
     }
     const result = await response.json();
     return result.data;
