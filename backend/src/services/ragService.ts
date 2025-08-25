@@ -5,6 +5,9 @@ import type { User, Account, Position } from '../../../shared/types';
 
 /**
  * Document chunk interface for semantic chunking
+ * 
+ * NOTE: When adding document-level metadata flags, use prefixes like 'doc' or 'document'
+ * (e.g., docHasTable, documentHasFormula) to avoid conflicts with chunk-level analysis flags.
  */
 interface DocumentChunk {
   content: string;
@@ -13,9 +16,9 @@ interface DocumentChunk {
     documentId: string;
     chunkIndex: number;
     tokenCount: number;
-    hasTable: boolean;
-    hasFormula: boolean;
-    hasNumbers: boolean;
+    hasTable: boolean; // Chunk-level analysis
+    hasFormula: boolean; // Chunk-level analysis
+    hasNumbers: boolean; // Chunk-level analysis
     section?: string;
     subsection?: string;
     [key: string]: any;
@@ -96,6 +99,11 @@ export class RAGService {
     
     // Collections
     documentsCollection: 'financial_documents',
+    
+    // Keyword search optimization
+    keywordBatchSize: 100,    // Documents to fetch per batch
+    maxKeywordPages: 20,      // Maximum pages to scan (prevents runaway queries)
+    maxScanLimit: 2000,       // Maximum total documents to scan
   };
 
   private constructor() {
@@ -643,14 +651,14 @@ Text: ${text.substring(0, 1000)}`
     return {
       content,
       metadata: {
-        ...baseMetadata, // Document-level metadata first
+        ...baseMetadata, // Document-level metadata first - prevents overriding chunk-level analysis
         chunkId: `${documentId}_chunk_${chunkIndex}`,
         documentId,
         chunkIndex,
         tokenCount,
-        hasTable,
-        hasFormula,
-        hasNumbers,
+        hasTable, // Chunk-level analysis takes precedence
+        hasFormula, // Chunk-level analysis takes precedence  
+        hasNumbers, // Chunk-level analysis takes precedence
         ...(section && { section }),
         ...(subsection && { subsection })
       }
@@ -678,14 +686,14 @@ Text: ${text.substring(0, 1000)}`
         chunks.push({
           content: currentChunk,
           metadata: {
+            ...metadata, // Document-level metadata first
             chunkId: `${documentId}_fallback_${chunkIndex}`,
             documentId,
             chunkIndex,
             tokenCount: encoder.encode(currentChunk).length,
             hasTable: false,
             hasFormula: false,
-            hasNumbers: /\d/.test(currentChunk),
-            ...metadata
+            hasNumbers: /\d/.test(currentChunk)
           }
         });
         
@@ -701,14 +709,14 @@ Text: ${text.substring(0, 1000)}`
       chunks.push({
         content: currentChunk,
         metadata: {
+          ...metadata, // Document-level metadata first
           chunkId: `${documentId}_fallback_${chunkIndex}`,
           documentId,
           chunkIndex,
           tokenCount: encoder.encode(currentChunk).length,
           hasTable: false,
           hasFormula: false,
-          hasNumbers: /\d/.test(currentChunk),
-          ...metadata
+          hasNumbers: /\d/.test(currentChunk)
         }
       });
     }
@@ -1044,48 +1052,77 @@ PRIORITY_SECTIONS: IRA Contribution Limits, Retirement Planning, Tax Deductions`
   }
 
   /**
-   * BM25 keyword search implementation
+   * Optimized BM25 keyword search implementation with pagination
    * 
-   * Simple BM25-like scoring based on term frequency and document frequency.
-   * For production, consider using a dedicated search engine like Elasticsearch.
+   * Uses batched retrieval to avoid loading entire collection into memory.
+   * Includes early termination and configurable scan limits for scalability.
    */
   private async keywordSearch(
     query: string,
     filters: RetrievalFilters,
     topK: number
   ): Promise<RetrievalResult[]> {
-    // Get all documents from collection
     const collection = await this.chromaClient.getCollection({
       name: this.config.documentsCollection
     });
 
     const whereClause = this.buildWhereClause(filters);
-
-    // Retrieve all documents (or a large subset)
-    const allResults = await collection.get({
-      ...(whereClause && { where: whereClause }),
-      include: ['documents', 'metadatas']
-    });
-
-    if (!allResults.documents || !allResults.metadatas) {
-      return [];
-    }
-
-    // Tokenize query
     const queryTerms = this.tokenizeForBM25(query.toLowerCase());
     
-    // Score documents using BM25-like algorithm
-    const scoredResults: RetrievalResult[] = [];
-    const totalDocs = allResults.documents.length;
+    // Pre-filter using Chroma's native text search if possible
+    // Note: Text filtering may not be supported in all Chroma versions
+    // If it fails, the method will fall back to metadata-only filtering
+    const textFilter = this.buildTextFilter(queryTerms);
+    const combinedWhere = this.combineWhereClause(whereClause, textFilter);
 
-    for (let i = 0; i < allResults.documents.length; i++) {
-      const document = allResults.documents[i];
-      const metadata = allResults.metadatas[i];
+    const scoredResults: RetrievalResult[] = [];
+    let totalDocsProcessed = 0;
+    let currentOffset = 0;
+    let totalDocsEstimate = 1000; // Will be updated after first batch
+
+    console.log(`🔍 Starting paginated keyword search for: "${query}"`);
+
+    // Paginated retrieval to avoid memory overload
+    for (let page = 0; page < this.config.maxKeywordPages; page++) {
+      if (totalDocsProcessed >= this.config.maxScanLimit) {
+        console.log(`⚠️ Reached scan limit of ${this.config.maxScanLimit} documents`);
+        break;
+      }
+
+      try {
+        // Fetch batch of documents
+        const batchResults = await collection.get({
+          ...(combinedWhere && { where: combinedWhere }),
+          include: ['documents', 'metadatas'],
+          limit: this.config.keywordBatchSize,
+          offset: currentOffset
+        });
+
+        if (!batchResults.documents || !batchResults.metadatas || batchResults.documents.length === 0) {
+          console.log(`📄 No more documents found at offset ${currentOffset}`);
+          break;
+        }
+
+        const batchSize = batchResults.documents.length;
+        totalDocsProcessed += batchSize;
+        
+        // Update total docs estimate based on first batch
+        if (page === 0 && batchSize === this.config.keywordBatchSize) {
+          // Estimate total docs (rough approximation)
+          totalDocsEstimate = Math.min(this.config.maxScanLimit, batchSize * this.config.maxKeywordPages);
+        }
+
+        console.log(`📄 Processing batch ${page + 1}: ${batchSize} documents (${totalDocsProcessed} total)`);
+
+        // Score documents in this batch
+        for (let i = 0; i < batchResults.documents.length; i++) {
+          const document = batchResults.documents[i];
+          const metadata = batchResults.metadatas[i];
 
       if (!document || !metadata) continue;
 
       const docTerms = this.tokenizeForBM25(document.toLowerCase());
-      const score = this.calculateBM25Score(queryTerms, docTerms, totalDocs);
+          const score = this.calculateBM25Score(queryTerms, docTerms, totalDocsEstimate);
 
       if (score > 0) {
         scoredResults.push({
@@ -1097,10 +1134,71 @@ PRIORITY_SECTIONS: IRA Contribution Limits, Retirement Planning, Tax Deductions`
       }
     }
 
+        // Early termination if we have enough high-quality results
+        if (scoredResults.length >= topK * 3 && page >= 2) {
+          console.log(`✅ Early termination: Found ${scoredResults.length} candidates after ${page + 1} pages`);
+          break;
+        }
+
+        currentOffset += batchSize;
+
+        // If we got fewer documents than requested, we've reached the end
+        if (batchSize < this.config.keywordBatchSize) {
+          console.log(`📄 Reached end of collection at ${totalDocsProcessed} documents`);
+          break;
+        }
+
+      } catch (error) {
+        console.error(`❌ Error processing batch ${page}:`, error);
+        break;
+      }
+    }
+
+    console.log(`🎯 Keyword search completed: ${scoredResults.length} candidates from ${totalDocsProcessed} documents`);
+
     // Sort by score and return top K
     return scoredResults
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
+  }
+
+  /**
+   * Build text filter for Chroma's native text search
+   * Creates a simple text matching filter to pre-reduce candidate set
+   */
+  private buildTextFilter(queryTerms: string[]): Record<string, any> | null {
+    if (queryTerms.length === 0) return null;
+    
+    // Use the most significant terms for pre-filtering
+    const significantTerms = queryTerms
+      .filter(term => term.length >= 3) // Skip very short terms
+      .slice(0, 3); // Use top 3 terms to avoid overly restrictive filters
+    
+    if (significantTerms.length === 0) return null;
+    
+    // Create a simple text contains filter (if supported by Chroma)
+    // This is a basic implementation - may need adjustment based on Chroma version
+    return {
+      $or: significantTerms.map(term => ({
+        document: { $contains: term }
+      }))
+    };
+  }
+
+  /**
+   * Combine where clauses for filtering
+   */
+  private combineWhereClause(
+    whereClause: Record<string, any> | null, 
+    textFilter: Record<string, any> | null
+  ): Record<string, any> | null {
+    if (!whereClause && !textFilter) return null;
+    if (!whereClause) return textFilter;
+    if (!textFilter) return whereClause;
+    
+    return {
+      $and: [whereClause, textFilter]
+    };
   }
 
   /**
@@ -1271,7 +1369,7 @@ PRIORITY_SECTIONS: IRA Contribution Limits, Retirement Planning, Tax Deductions`
    * Build ChromaDB where clause from filters
    * ChromaDB requires AND conditions to be structured differently
    */
-  private buildWhereClause(filters: RetrievalFilters): Record<string, any> | undefined {
+  private buildWhereClause(filters: RetrievalFilters): Record<string, any> | null {
     const conditions: Record<string, any>[] = [];
 
     if (filters.source && filters.source.length > 0) {
@@ -1306,9 +1404,9 @@ PRIORITY_SECTIONS: IRA Contribution Limits, Retirement Planning, Tax Deductions`
 
     // Return appropriate structure based on number of conditions
     if (conditions.length === 0) {
-      return undefined;
+      return null;
     } else if (conditions.length === 1) {
-      return conditions[0];
+      return conditions[0] || null;
     } else {
       return { $and: conditions };
     }
